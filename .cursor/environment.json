@@ -1,5 +1,5 @@
 {
   "name": "Kai",
   "user": "ubuntu",
-  "install": "echo \"sdk.dir=$HOME/android-sdk\" > local.properties && chmod +x gradlew && ./gradlew --no-daemon help"
+  "install": "bash .cursor/install.sh"
 }
