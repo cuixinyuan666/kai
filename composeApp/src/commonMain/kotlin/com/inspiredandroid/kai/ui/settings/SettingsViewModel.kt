@@ -1,0 +1,1485 @@
+package com.inspiredandroid.kai.ui.settings
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.inspiredandroid.kai.DaemonController
+import com.inspiredandroid.kai.Platform
+import com.inspiredandroid.kai.currentPlatform
+import com.inspiredandroid.kai.data.DataRepository
+import com.inspiredandroid.kai.data.ImportSection
+import com.inspiredandroid.kai.data.ModelBenchmark
+import com.inspiredandroid.kai.data.Service
+import com.inspiredandroid.kai.data.ServiceEntry
+import com.inspiredandroid.kai.data.TaskScheduler
+import com.inspiredandroid.kai.data.ThemeMode
+import com.inspiredandroid.kai.data.supportsAgenticFlows
+import com.inspiredandroid.kai.getBackgroundDispatcher
+import com.inspiredandroid.kai.httpClient
+import com.inspiredandroid.kai.inference.LocalModel
+import com.inspiredandroid.kai.inference.ModelImportResult
+import com.inspiredandroid.kai.isEmailSupported
+import com.inspiredandroid.kai.isNotificationsSupported
+import com.inspiredandroid.kai.isSmsSupported
+import com.inspiredandroid.kai.mcp.PopularMcpServer
+import com.inspiredandroid.kai.network.AnthropicInsufficientCreditsException
+import com.inspiredandroid.kai.network.AnthropicInvalidApiKeyException
+import com.inspiredandroid.kai.network.AnthropicOverloadedException
+import com.inspiredandroid.kai.network.AnthropicRateLimitExceededException
+import com.inspiredandroid.kai.network.GeminiInvalidApiKeyException
+import com.inspiredandroid.kai.network.GeminiRateLimitExceededException
+import com.inspiredandroid.kai.network.OpenAICompatibleConnectionException
+import com.inspiredandroid.kai.network.OpenAICompatibleInvalidApiKeyException
+import com.inspiredandroid.kai.network.OpenAICompatibleQuotaExhaustedException
+import com.inspiredandroid.kai.network.OpenAICompatibleRateLimitExceededException
+import com.inspiredandroid.kai.network.dtos.SponsorsResponseDto
+import com.inspiredandroid.kai.skills.parseGitHubSkillUrl
+import com.inspiredandroid.kai.tools.AppPermission
+import com.inspiredandroid.kai.tools.PermissionController
+import com.inspiredandroid.kai.tools.isLocalNetworkUrl
+import io.github.vinceglb.filekit.PlatformFile
+import io.ktor.client.call.body
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.get
+import io.ktor.http.isSuccess
+import io.ktor.serialization.kotlinx.json.json
+import kai.composeapp.generated.resources.Res
+import kai.composeapp.generated.resources.error_unknown
+import kai.composeapp.generated.resources.error_unrecognized_github_repo
+import kotlinx.collections.immutable.ImmutableMap
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
+import kotlinx.collections.immutable.toImmutableMap
+import kotlinx.collections.immutable.toPersistentSet
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.serialization.json.Json
+import org.jetbrains.compose.resources.getString
+import kotlin.coroutines.CoroutineContext
+import kotlin.math.roundToInt
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
+
+class SettingsViewModel(
+    internal val dataRepository: DataRepository,
+    private val daemonController: DaemonController,
+    private val notificationPermissionController: PermissionController,
+    private val taskScheduler: TaskScheduler,
+    private val backgroundDispatcher: CoroutineContext = getBackgroundDispatcher(),
+    private val localNetworkPermissionController: PermissionController = PermissionController(AppPermission.LOCAL_NETWORK),
+) : ViewModel() {
+
+    private var connectionCheckJobs: MutableMap<String, Job> = mutableMapOf()
+    private var hasCheckedInitialConnection = false
+    private var pendingDeleteJob: Job? = null
+
+    /** 供协作设置页使用：返回所有已配置服务的模型分支。 */
+    fun collaborationServiceEntries(): List<ServiceEntry> = dataRepository.getServiceEntries()
+
+    private fun buildFullState(): SettingsUiState {
+        // 首次构建前确保免密钥（free-key）服务已写入仓库，避免“已添加却没显示”的空窗。
+        ensureKeylessServicesConfigured()
+        return SettingsUiState(
+        configuredServices = sortedConfigured(buildConfiguredServiceEntries(), false).toImmutableList(),
+        availableServicesToAdd = sortedAvailable(computeAvailableServices(), false).toImmutableList(),
+        isDefaultInteractiveMode = dataRepository.isInteractiveModeActive(),
+        tools = dataRepository.getToolDefinitions().toImmutableList(),
+        soulText = dataRepository.getSoulText(),
+        isDynamicUiEnabled = dataRepository.isDynamicUiEnabled(),
+        themeMode = dataRepository.getThemeMode(),
+        isMemoryEnabled = dataRepository.isMemoryEnabled(),
+        memories = dataRepository.getMemories().toImmutableList(),
+        isSchedulingEnabled = dataRepository.isSchedulingEnabled(),
+        scheduledTasks = dataRepository.getScheduledTasks().toImmutableList(),
+        isDaemonEnabled = dataRepository.isDaemonEnabled(),
+        showDaemonToggle = currentPlatform is Platform.Mobile.Android,
+        isHeartbeatEnabled = dataRepository.getHeartbeatConfig().enabled,
+        heartbeatIntervalMinutes = dataRepository.getHeartbeatConfig().intervalMinutes,
+        heartbeatActiveHoursStart = dataRepository.getHeartbeatConfig().activeHoursStart,
+        heartbeatActiveHoursEnd = dataRepository.getHeartbeatConfig().activeHoursEnd,
+        heartbeatPrompt = dataRepository.getHeartbeatPrompt(),
+        heartbeatLog = dataRepository.getHeartbeatLog().toImmutableList(),
+        heartbeatServiceEntries = dataRepository.getServiceEntries()
+            .filter { supportsAgenticFlows(it.serviceId, it.modelId) }
+            .toImmutableList(),
+        heartbeatSelectedInstanceId = dataRepository.getHeartbeatInstanceId()?.takeIf { id ->
+            dataRepository.getServiceEntries().any { it.instanceId == id }
+        }.also { validId ->
+            val savedId = dataRepository.getHeartbeatInstanceId()
+            if (savedId != null && validId == null) dataRepository.setHeartbeatInstanceId(null)
+        },
+        isEmailEnabled = dataRepository.isEmailEnabled(),
+        showEmailToggle = isEmailSupported,
+        emailAccounts = dataRepository.getEmailAccounts().toImmutableList(),
+        emailPollIntervalMinutes = dataRepository.getEmailPollIntervalMinutes(),
+        emailPendingCount = dataRepository.getPendingEmailCount(),
+        emailSyncStates = dataRepository.getEmailSyncStates().toImmutableMap(),
+        showSmsSection = isSmsSupported,
+        isSmsEnabled = dataRepository.isSmsEnabled(),
+        smsPermissionGranted = dataRepository.hasSmsPermission(),
+        smsPollIntervalMinutes = dataRepository.getSmsPollIntervalMinutes(),
+        smsPendingCount = dataRepository.getPendingSmsCount(),
+        smsSyncState = dataRepository.getSmsSyncState(),
+        isSmsSendEnabled = dataRepository.isSmsSendEnabled(),
+        smsSendPermissionGranted = dataRepository.hasSmsSendPermission(),
+        showNotificationsSection = isNotificationsSupported,
+        isNotificationsEnabled = dataRepository.isNotificationsEnabled(),
+        notificationListenerAccessGranted = dataRepository.isNotificationListenerAccessGranted(),
+        notificationListenerBound = dataRepository.getNotificationSyncState().listenerBound,
+        notificationPendingCount = dataRepository.getPendingNotificationCount(),
+        isFreeFallbackEnabled = dataRepository.isFreeFallbackEnabled(),
+        uiScale = dataRepository.getUiScale(),
+        showUiScale = currentPlatform is Platform.Desktop,
+        mcpServers = buildMcpServerEntries().toImmutableList(),
+        skills = dataRepository.getInstalledSkills().toImmutableList(),
+        localAvailableModels = dataRepository.getLocalAvailableModels().toImmutableList(),
+        localImportedModels = dataRepository.getLocalImportedModels().toImmutableList(),
+        totalDeviceMemoryBytes = dataRepository.getTotalDeviceMemoryBytes(),
+        localFreeSpaceBytes = dataRepository.getLocalFreeSpaceBytes(),
+        localDownloadingModelId = dataRepository.getLocalDownloadingModelId()?.value,
+        localDownloadProgress = dataRepository.getLocalDownloadProgress()?.value,
+        localImportingFileName = dataRepository.getLocalImportingFileName()?.value,
+        localImportProgress = dataRepository.getLocalImportProgress()?.value,
+        modelContextTokens = buildModelContextTokensMap(),
+        modelBenchmarks = dataRepository.getModelBenchmarks().toImmutableList(),
+        openCodeTerminalThinking = dataRepository.getOpenCodeTerminalThinking(),
+        openCodeTerminalMode = dataRepository.getOpenCodeTerminalMode(),
+        )
+    }
+
+    // Bound once so downstream Compose skipping works — a new SettingsActions
+    // instance on every state emission would defeat it.
+    val actions: SettingsActions = SettingsActions(
+        onSelectTab = ::onSelectTab,
+        onAddService = ::onAddService,
+        onRemoveService = ::onRemoveService,
+        onReorderServices = ::onReorderServices,
+        onExpandService = ::onExpandService,
+        onChangeApiKey = ::onChangeApiKey,
+        onChangeBaseUrl = ::onChangeBaseUrl,
+        onSelectModel = ::onSelectModel,
+        onToggleUseCustomModel = ::onToggleUseCustomModel,
+        onChangeCustomModelId = ::onChangeCustomModelId,
+        onToggleTool = ::onToggleTool,
+        onSaveSoul = ::onSaveSoul,
+        onToggleDynamicUi = ::onToggleDynamicUi,
+        onChangeThemeMode = ::onChangeThemeMode,
+        onToggleMemory = ::onToggleMemory,
+        onDeleteMemory = ::onDeleteMemory,
+        onUpdateMemory = ::onUpdateMemory,
+        onToggleScheduling = ::onToggleScheduling,
+        onCancelTask = ::onCancelTask,
+        onToggleDaemon = ::onToggleDaemon,
+        onToggleHeartbeat = ::onToggleHeartbeat,
+        onChangeHeartbeatInterval = ::onChangeHeartbeatInterval,
+        onChangeHeartbeatActiveHours = ::onChangeHeartbeatActiveHours,
+        onSaveHeartbeatPrompt = ::onSaveHeartbeatPrompt,
+        onChangeHeartbeatService = ::onChangeHeartbeatService,
+        onRefreshHeartbeat = ::onRefreshHeartbeat,
+        onToggleEmail = ::onToggleEmail,
+        onRemoveEmailAccount = ::onRemoveEmailAccount,
+        onChangeEmailPollInterval = ::onChangeEmailPollInterval,
+        onRefreshEmailAccount = ::onRefreshEmailAccount,
+        onToggleSms = ::onToggleSms,
+        onChangeSmsPollInterval = ::onChangeSmsPollInterval,
+        onRefreshSms = ::onRefreshSms,
+        onToggleSmsSend = ::onToggleSmsSend,
+        onToggleNotifications = ::onToggleNotifications,
+        onOpenNotificationListenerSettings = ::onOpenNotificationListenerSettings,
+        onOpenAppPermissionSettings = ::onOpenAppPermissionSettings,
+        onRecheckLocalNetworkPermission = ::onRecheckLocalNetworkPermission,
+        onClearPendingNotifications = ::onClearPendingNotifications,
+        onToggleFreeFallback = ::onToggleFreeFallback,
+        onChangeUiScale = ::onChangeUiScale,
+        onAddMcpServer = ::onAddMcpServer,
+        onRemoveMcpServer = ::onRemoveMcpServer,
+        onToggleMcpServer = ::onToggleMcpServer,
+        onRefreshMcpServer = ::onRefreshMcpServer,
+        onShowAddMcpServerDialog = ::onShowAddMcpServerDialog,
+        onAddPopularMcpServer = ::onAddPopularMcpServer,
+        onUninstallSkill = ::onUninstallSkill,
+        onShowAddSkillDialog = ::onShowAddSkillDialog,
+        onInstallGitHubSkill = ::onInstallGitHubSkill,
+        onInstallBrowsedSkill = ::onInstallBrowsedSkill,
+        onDownloadLocalModel = ::onDownloadLocalModel,
+        onCancelLocalModelDownload = ::onCancelLocalModelDownload,
+        onImportLocalModel = ::onImportLocalModel,
+        onCancelLocalModelImport = ::onCancelLocalModelImport,
+        onDeleteLocalModel = ::onDeleteLocalModel,
+        onChangeModelContextTokens = ::onChangeModelContextTokens,
+        onExportSettings = ::onExportSettings,
+        onPrepareExport = ::onPrepareExport,
+        onImportSettings = ::onImportSettings,
+        onUndoDelete = ::onUndoDelete,
+        onToggleServiceSortReversed = ::onToggleServiceSortReversed,
+        onToggleDefaultInteractiveMode = ::onToggleDefaultInteractiveMode,
+        onRunModelBenchmarks = ::onRunModelBenchmarks,
+        onCancelModelBenchmarks = ::onCancelModelBenchmarks,
+        onClearModelBenchmarks = ::onClearModelBenchmarks,
+        onToggleOpenCodeTerminalThinking = ::onToggleOpenCodeTerminalThinking,
+        onChangeOpenCodeTerminalMode = ::onChangeOpenCodeTerminalMode,
+    )
+
+    private val _state = MutableStateFlow(buildFullState())
+
+    val state = _state.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = _state.value,
+    )
+
+    init {
+        // 免密钥（free-key）服务无需手动“添加服务”，首次进入即自动配置到模型列表。
+        ensureKeylessServicesConfigured()
+        // Observe download state from the engine singleton (survives activity recreation)
+        val downloadingFlow = dataRepository.getLocalDownloadingModelId() ?: flowOf(null)
+        val progressFlow = dataRepository.getLocalDownloadProgress() ?: flowOf(null)
+        val errorFlow = dataRepository.getLocalDownloadError() ?: flowOf(null)
+        viewModelScope.launch {
+            combine(downloadingFlow, progressFlow, errorFlow) { modelId, progress, error ->
+                Triple(modelId, progress, error)
+            }.collect { (modelId, progress, error) ->
+                val wasDownloading = _state.value.localDownloadingModelId != null
+                _state.update {
+                    it.copy(
+                        localDownloadingModelId = modelId,
+                        localDownloadProgress = progress,
+                        localDownloadError = error,
+                    )
+                }
+                if (modelId == null && wasDownloading) {
+                    // Download finished or cancelled — refresh
+                    refreshLocalModelsAfterChange()
+                }
+            }
+        }
+
+        val importingFlow = dataRepository.getLocalImportingFileName() ?: flowOf(null)
+        val importProgressFlow = dataRepository.getLocalImportProgress() ?: flowOf(null)
+        val importErrorFlow = dataRepository.getLocalImportError() ?: flowOf(null)
+        viewModelScope.launch {
+            combine(importingFlow, importProgressFlow, importErrorFlow) { name, progress, error ->
+                Triple(name, progress, error)
+            }.collect { (name, progress, error) ->
+                _state.update {
+                    it.copy(
+                        localImportingFileName = name,
+                        localImportProgress = progress,
+                        localImportError = error,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun refreshLocalModelsAfterChange() {
+        _state.update {
+            it.copy(
+                localFreeSpaceBytes = dataRepository.getLocalFreeSpaceBytes(),
+                localImportedModels = dataRepository.getLocalImportedModels().toImmutableList(),
+                modelContextTokens = buildModelContextTokensMap(),
+            )
+        }
+        refreshServiceList()
+        _state.value.configuredServices
+            .filter { it.service.isOnDevice }
+            .forEach { checkConnection(it.instanceId, it.service) }
+    }
+
+    fun onScreenVisible() {
+        if (!hasCheckedInitialConnection) {
+            hasCheckedInitialConnection = true
+            checkAllConnections()
+            connectEnabledMcpServers()
+            fetchSponsors()
+        }
+        // Re-read notification listener state every time the screen becomes visible:
+        // the user may have toggled access in system settings while we were backgrounded.
+        if (isNotificationsSupported) {
+            _state.update {
+                it.copy(
+                    notificationListenerAccessGranted = dataRepository.isNotificationListenerAccessGranted(),
+                    notificationListenerBound = dataRepository.getNotificationSyncState().listenerBound,
+                    notificationPendingCount = dataRepository.getPendingNotificationCount(),
+                )
+            }
+        }
+    }
+
+    private fun fetchSponsors() {
+        viewModelScope.launch(backgroundDispatcher) {
+            try {
+                val client = httpClient {
+                    install(ContentNegotiation) {
+                        json(Json { ignoreUnknownKeys = true })
+                    }
+                }
+                val response = client.get("https://ghs.vercel.app/v3/sponsors/SimonSchubert")
+                if (response.status.isSuccess()) {
+                    val dto = response.body<SponsorsResponseDto>()
+                    _state.update {
+                        it.copy(
+                            currentSponsors = dto.sponsors.current.toImmutableList(),
+                            pastSponsors = dto.sponsors.past.toImmutableList(),
+                        )
+                    }
+                }
+            } catch (_: Exception) {
+                // Silently ignore - sponsors are non-critical
+            }
+        }
+    }
+
+    private fun buildConfiguredServiceEntries(): List<ConfiguredServiceEntry> = dataRepository.getConfiguredServiceInstances().map { instance ->
+        val service = Service.fromId(instance.serviceId)
+        val models = dataRepository.getInstanceModels(instance.instanceId, service).value
+        ConfiguredServiceEntry(
+            instanceId = instance.instanceId,
+            service = service,
+            apiKey = dataRepository.getInstanceApiKey(instance.instanceId),
+            baseUrl = dataRepository.getInstanceBaseUrl(instance.instanceId, service),
+            selectedModel = models.firstOrNull { it.isSelected },
+            models = models.toImmutableList(),
+            useCustomModel = dataRepository.getInstanceUseCustomModel(instance.instanceId),
+            customModelId = dataRepository.getInstanceCustomModelId(instance.instanceId),
+        )
+    }
+
+    private fun computeAvailableServices(): List<Service> {
+        // Allow all non-Free services (multiple instances of same type are allowed)
+        // Pin OpenAI-Compatible and LiteRT (Local Model) to the top, then the featured Atlas Cloud
+        // provider, then sort the rest alphabetically
+        // Hide on-device services on platforms that don't support them
+        return Service.all
+            .filter { it != Service.Free }
+            .filter { !it.isOnDevice || dataRepository.isLocalInferenceAvailable() }
+            .sortedBy { it.displayName }
+    }
+
+    private fun refreshServiceList() {
+        _state.update { current ->
+            val existingStatuses = current.configuredServices.associate { it.instanceId to it.connectionStatus }
+            val newEntries = buildConfiguredServiceEntries().map { entry ->
+                val preservedStatus = existingStatuses[entry.instanceId]
+                if (preservedStatus != null) entry.copy(connectionStatus = preservedStatus) else entry
+            }
+            current.copy(
+                configuredServices = sortedConfigured(newEntries).toImmutableList(),
+                availableServicesToAdd = sortedAvailable(computeAvailableServices()).toImmutableList(),
+            )
+        }
+    }
+
+    private fun onSelectTab(tab: SettingsTab) {
+        _state.update { it.copy(currentTab = tab) }
+    }
+
+    private fun onAddService(service: Service) {
+        val instance = dataRepository.addConfiguredService(service.id)
+        refreshServiceList()
+        _state.update { it.copy(expandedServiceId = instance.instanceId) }
+        checkConnection(instance.instanceId, service)
+    }
+
+    private fun onRemoveService(instanceId: String) {
+        commitPendingDeletion()
+        _state.update {
+            it.copy(
+                expandedServiceId = if (it.expandedServiceId == instanceId) null else it.expandedServiceId,
+                pendingDeletion = PendingDeletion.Service(instanceId),
+            )
+        }
+        pendingDeleteJob = viewModelScope.launch(backgroundDispatcher) {
+            delay(4.seconds)
+            executeDeletion(PendingDeletion.Service(instanceId))
+        }
+    }
+
+    private fun onReorderServices(orderedIds: List<String>) {
+        dataRepository.reorderConfiguredServices(orderedIds)
+        refreshServiceList()
+    }
+
+    private fun onExpandService(instanceId: String?) {
+        _state.update { it.copy(expandedServiceId = instanceId) }
+        if (instanceId != null) {
+            refreshInstanceModels(instanceId)
+        }
+    }
+
+    private fun refreshInstanceModels(instanceId: String) {
+        val entry = _state.value.configuredServices.find { it.instanceId == instanceId } ?: return
+        val models = dataRepository.getInstanceModels(instanceId, entry.service).value
+        _state.update { state ->
+            state.copy(
+                configuredServices = state.configuredServices.map { e ->
+                    if (e.instanceId == instanceId) {
+                        e.copy(
+                            models = models.toImmutableList(),
+                            selectedModel = models.firstOrNull { it.isSelected },
+                        )
+                    } else {
+                        e
+                    }
+                }.toImmutableList(),
+            )
+        }
+    }
+
+    private fun onChangeApiKey(instanceId: String, apiKey: String) {
+        val entry = _state.value.configuredServices.find { it.instanceId == instanceId } ?: return
+        dataRepository.updateInstanceApiKey(instanceId, apiKey)
+        dataRepository.clearInstanceModels(instanceId, entry.service)
+        _state.update { state ->
+            state.copy(
+                configuredServices = state.configuredServices.map { e ->
+                    if (e.instanceId == instanceId) {
+                        e.copy(apiKey = apiKey, connectionStatus = ConnectionStatus.Unknown)
+                    } else {
+                        e
+                    }
+                }.toImmutableList(),
+            )
+        }
+        checkConnectionDebounced(instanceId, entry.service)
+    }
+
+    private fun onChangeBaseUrl(instanceId: String, baseUrl: String) {
+        val entry = _state.value.configuredServices.find { it.instanceId == instanceId } ?: return
+        dataRepository.updateInstanceBaseUrl(instanceId, baseUrl)
+        dataRepository.clearInstanceModels(instanceId, entry.service)
+        _state.update { state ->
+            state.copy(
+                configuredServices = state.configuredServices.map { e ->
+                    if (e.instanceId == instanceId) {
+                        e.copy(baseUrl = baseUrl, connectionStatus = ConnectionStatus.Unknown)
+                    } else {
+                        e
+                    }
+                }.toImmutableList(),
+            )
+        }
+        checkConnectionDebounced(instanceId, entry.service)
+    }
+
+    private fun onSelectModel(instanceId: String, modelId: String) {
+        val entry = _state.value.configuredServices.find { it.instanceId == instanceId } ?: return
+        dataRepository.updateInstanceSelectedModel(instanceId, entry.service, modelId)
+        refreshInstanceModels(instanceId)
+    }
+
+    private fun onToggleUseCustomModel(instanceId: String, useCustom: Boolean) {
+        dataRepository.updateInstanceUseCustomModel(instanceId, useCustom)
+        _state.update { state ->
+            state.copy(
+                configuredServices = state.configuredServices.map { e ->
+                    if (e.instanceId != instanceId) {
+                        e
+                    } else {
+                        e.copy(
+                            useCustomModel = useCustom,
+                            customModelId = dataRepository.getInstanceCustomModelId(instanceId),
+                        )
+                    }
+                }.toImmutableList(),
+            )
+        }
+    }
+
+    private fun onChangeCustomModelId(instanceId: String, modelId: String) {
+        dataRepository.updateInstanceCustomModelId(instanceId, modelId)
+        _state.update { state ->
+            state.copy(
+                configuredServices = state.configuredServices.map { e ->
+                    if (e.instanceId == instanceId) e.copy(customModelId = modelId) else e
+                }.toImmutableList(),
+            )
+        }
+    }
+
+    private fun onSaveSoul(text: String) {
+        dataRepository.setSoulText(text)
+        _state.update { it.copy(soulText = text) }
+    }
+
+    private fun onToggleDynamicUi(enabled: Boolean) {
+        dataRepository.setDynamicUiEnabled(enabled)
+        _state.update { it.copy(isDynamicUiEnabled = enabled) }
+    }
+
+    private fun onChangeThemeMode(mode: ThemeMode) {
+        dataRepository.setThemeMode(mode)
+        _state.update { it.copy(themeMode = mode) }
+    }
+
+    private fun onToggleMemory(enabled: Boolean) {
+        dataRepository.setMemoryEnabled(enabled)
+        _state.update { it.copy(isMemoryEnabled = enabled) }
+    }
+
+    private fun onDeleteMemory(key: String) {
+        commitPendingDeletion()
+        _state.update { it.copy(pendingDeletion = PendingDeletion.Memory(key)) }
+        pendingDeleteJob = viewModelScope.launch(backgroundDispatcher) {
+            delay(4.seconds)
+            executeDeletion(PendingDeletion.Memory(key))
+        }
+    }
+
+    private fun onUpdateMemory(key: String, content: String) {
+        viewModelScope.launch(backgroundDispatcher) {
+            dataRepository.updateMemoryContent(key, content)
+            _state.update { it.copy(memories = dataRepository.getMemories().toImmutableList()) }
+        }
+    }
+
+    private fun onToggleScheduling(enabled: Boolean) {
+        dataRepository.setSchedulingEnabled(enabled)
+        _state.update { it.copy(isSchedulingEnabled = enabled) }
+    }
+
+    private fun onCancelTask(id: String) {
+        commitPendingDeletion()
+        _state.update { it.copy(pendingDeletion = PendingDeletion.Task(id)) }
+        pendingDeleteJob = viewModelScope.launch(backgroundDispatcher) {
+            delay(4.seconds)
+            executeDeletion(PendingDeletion.Task(id))
+        }
+    }
+
+    private fun onToggleDaemon(enabled: Boolean) {
+        dataRepository.setDaemonEnabled(enabled)
+        if (enabled) {
+            viewModelScope.launch { notificationPermissionController.requestPermission() }
+            daemonController.start()
+        } else {
+            daemonController.stop()
+        }
+        _state.update { it.copy(isDaemonEnabled = enabled) }
+    }
+
+    private fun onToggleHeartbeat(enabled: Boolean) {
+        dataRepository.setHeartbeatEnabled(enabled)
+        _state.update { it.copy(isHeartbeatEnabled = enabled) }
+    }
+
+    private fun onChangeHeartbeatInterval(minutes: Int) {
+        dataRepository.setHeartbeatIntervalMinutes(minutes)
+        _state.update { it.copy(heartbeatIntervalMinutes = minutes) }
+    }
+
+    private fun onChangeHeartbeatActiveHours(start: Int, end: Int) {
+        dataRepository.setHeartbeatActiveHours(start, end)
+        _state.update { it.copy(heartbeatActiveHoursStart = start, heartbeatActiveHoursEnd = end) }
+    }
+
+    private fun onSaveHeartbeatPrompt(text: String) {
+        dataRepository.setHeartbeatPrompt(text)
+        _state.update { it.copy(heartbeatPrompt = text) }
+    }
+
+    private fun onChangeHeartbeatService(instanceId: String?) {
+        dataRepository.setHeartbeatInstanceId(instanceId)
+        _state.update { it.copy(heartbeatSelectedInstanceId = instanceId) }
+    }
+
+    private fun onRefreshHeartbeat() {
+        if (_state.value.isRefreshingHeartbeat) return
+        _state.update { it.copy(isRefreshingHeartbeat = true) }
+        viewModelScope.launch(backgroundDispatcher) {
+            taskScheduler.triggerHeartbeatNow()
+            _state.update {
+                it.copy(
+                    isRefreshingHeartbeat = false,
+                    heartbeatLog = dataRepository.getHeartbeatLog().toImmutableList(),
+                )
+            }
+        }
+    }
+
+    private fun onToggleEmail(enabled: Boolean) {
+        dataRepository.setEmailEnabled(enabled)
+        _state.update { it.copy(isEmailEnabled = enabled) }
+    }
+
+    private fun onRemoveEmailAccount(id: String) {
+        commitPendingDeletion()
+        _state.update { it.copy(pendingDeletion = PendingDeletion.EmailAccount(id)) }
+        pendingDeleteJob = viewModelScope.launch(backgroundDispatcher) {
+            delay(4.seconds)
+            executeDeletion(PendingDeletion.EmailAccount(id))
+        }
+    }
+
+    private fun onChangeEmailPollInterval(minutes: Int) {
+        dataRepository.setEmailPollIntervalMinutes(minutes)
+        _state.update { it.copy(emailPollIntervalMinutes = minutes) }
+    }
+
+    private fun onRefreshEmailAccount(id: String) {
+        if (id in _state.value.refreshingEmailAccountIds) return
+        _state.update { it.copy(refreshingEmailAccountIds = (it.refreshingEmailAccountIds + id).toPersistentSet()) }
+        viewModelScope.launch(backgroundDispatcher) {
+            dataRepository.pollEmailAccount(id)
+            _state.update {
+                it.copy(
+                    refreshingEmailAccountIds = (it.refreshingEmailAccountIds - id).toPersistentSet(),
+                    emailSyncStates = dataRepository.getEmailSyncStates().toImmutableMap(),
+                    emailPendingCount = dataRepository.getPendingEmailCount(),
+                )
+            }
+        }
+    }
+
+    private fun onToggleSms(enabled: Boolean) {
+        if (enabled && !dataRepository.hasSmsPermission()) {
+            // Ask for the OS permission first; only flip the toggle on if it's granted.
+            viewModelScope.launch(backgroundDispatcher) {
+                val granted = dataRepository.requestSmsPermission()
+                _state.update { it.copy(smsPermissionGranted = granted, isSmsEnabled = granted) }
+                if (granted) {
+                    dataRepository.setSmsEnabled(true)
+                    // First poll seeds lastSeenId to the current inbox max, so the AI
+                    // isn't drowned in historical messages on opt-in.
+                    dataRepository.pollSms()
+                    _state.update {
+                        it.copy(
+                            smsSyncState = dataRepository.getSmsSyncState(),
+                            smsPendingCount = dataRepository.getPendingSmsCount(),
+                        )
+                    }
+                }
+            }
+        } else {
+            dataRepository.setSmsEnabled(enabled)
+            _state.update { it.copy(isSmsEnabled = enabled) }
+        }
+    }
+
+    private fun onChangeSmsPollInterval(minutes: Int) {
+        dataRepository.setSmsPollIntervalMinutes(minutes)
+        _state.update { it.copy(smsPollIntervalMinutes = minutes) }
+    }
+
+    private fun onRefreshSms() {
+        if (_state.value.isRefreshingSms) return
+        _state.update { it.copy(isRefreshingSms = true) }
+        viewModelScope.launch(backgroundDispatcher) {
+            dataRepository.pollSms()
+            _state.update {
+                it.copy(
+                    isRefreshingSms = false,
+                    smsSyncState = dataRepository.getSmsSyncState(),
+                    smsPendingCount = dataRepository.getPendingSmsCount(),
+                    smsPermissionGranted = dataRepository.hasSmsPermission(),
+                )
+            }
+        }
+    }
+
+    private fun onToggleSmsSend(enabled: Boolean) {
+        if (enabled && !dataRepository.hasSmsSendPermission()) {
+            viewModelScope.launch(backgroundDispatcher) {
+                val granted = dataRepository.requestSmsSendPermission()
+                _state.update { it.copy(smsSendPermissionGranted = granted, isSmsSendEnabled = granted) }
+                if (granted) dataRepository.setSmsSendEnabled(true)
+            }
+        } else {
+            dataRepository.setSmsSendEnabled(enabled)
+            _state.update { it.copy(isSmsSendEnabled = enabled) }
+        }
+    }
+
+    private fun onToggleNotifications(enabled: Boolean) {
+        // Listener access is granted via system Settings, not a runtime permission
+        // dialog. Set the toggle, then if access is missing, deep-link the user out
+        // so they can enable Kai there. The toggle reflects the user's *intent*; the
+        // listener still drops everything until access is granted.
+        dataRepository.setNotificationsEnabled(enabled)
+        _state.update {
+            it.copy(
+                isNotificationsEnabled = enabled,
+                notificationListenerAccessGranted = dataRepository.isNotificationListenerAccessGranted(),
+            )
+        }
+        if (enabled && !dataRepository.isNotificationListenerAccessGranted()) {
+            dataRepository.openNotificationListenerSettings()
+        }
+    }
+
+    private fun onOpenNotificationListenerSettings() {
+        dataRepository.openNotificationListenerSettings()
+    }
+
+    private fun onOpenAppPermissionSettings() {
+        localNetworkPermissionController.openAppSettings()
+    }
+
+    /**
+     * Called when the app resumes while a connection sits in the local-network-denied state.
+     * Re-validates only if the permission is now granted — never re-prompts, so a user who
+     * denied and stayed on the screen isn't nagged with another dialog.
+     */
+    private fun onRecheckLocalNetworkPermission(instanceId: String) {
+        if (!localNetworkPermissionController.hasPermission()) return
+        val instance = dataRepository.getConfiguredServiceInstances().firstOrNull { it.instanceId == instanceId } ?: return
+        validateConnectionWithStatus(instanceId, Service.fromId(instance.serviceId))
+    }
+
+    private fun onClearPendingNotifications() {
+        viewModelScope.launch(backgroundDispatcher) {
+            dataRepository.clearPendingNotifications()
+            _state.update { it.copy(notificationPendingCount = 0) }
+        }
+    }
+
+    private fun onToggleFreeFallback(enabled: Boolean) {
+        dataRepository.setFreeFallbackEnabled(enabled)
+        _state.update { it.copy(isFreeFallbackEnabled = enabled) }
+    }
+
+    private fun onToggleServiceSortReversed(reversed: Boolean) {
+        _state.update { it.copy(serviceSortReversed = reversed) }
+        refreshServiceList()
+    }
+
+    private fun onToggleDefaultInteractiveMode(enabled: Boolean) {
+        dataRepository.setInteractiveMode(enabled)
+        _state.update { it.copy(isDefaultInteractiveMode = enabled) }
+    }
+
+    private fun onToggleOpenCodeTerminalThinking(enabled: Boolean) {
+        dataRepository.setOpenCodeTerminalThinking(enabled)
+        _state.update { it.copy(openCodeTerminalThinking = enabled) }
+    }
+
+    private fun onChangeOpenCodeTerminalMode(mode: String) {
+        dataRepository.setOpenCodeTerminalMode(mode)
+        _state.update { it.copy(openCodeTerminalMode = mode) }
+    }
+
+    // region 模型基准测试（一键测试所有大模型）
+
+    private var benchmarkJob: Job? = null
+
+    private fun onRunModelBenchmarks() {
+        if (benchmarkJob?.isActive == true) return
+        benchmarkJob = viewModelScope.launch(backgroundDispatcher) {
+            runBenchmarkSequence()
+        }
+    }
+
+    private fun onCancelModelBenchmarks() {
+        benchmarkJob?.cancel()
+        benchmarkJob = null
+        _state.update {
+            it.copy(
+                isBenchmarkRunning = false,
+                benchmarkDone = false,
+                benchmarkDoneCount = 0,
+                benchmarkSummary = "",
+            )
+        }
+    }
+
+    private fun onClearModelBenchmarks() {
+        dataRepository.clearModelBenchmarks()
+        _state.update { it.copy(modelBenchmarks = persistentListOf(), benchmarkDone = false, benchmarkSummary = "") }
+    }
+
+    /**
+     * 统一（并行）测试所有已配置模型：对每个模型分支同时发起一次简单提问（1+1），
+     * 用 完成度/速度/响应速度/字数 四项加权打分（0..100），结果写入仓库。
+     * 每模型最大等待 60s；并发上限 [BENCHMARK_CONCURRENCY] 路，防止被服务端限流。
+     * 全部结束后生成一份结果统计（[buildBenchmarkSummary]）。
+     */
+    private suspend fun runBenchmarkSequence() {
+        // 收集全部候选：(instanceId, serviceId, modelId, label)
+        val candidates = buildList {
+            for (entry in dataRepository.getServiceEntries()) {
+                val service = Service.fromId(entry.serviceId)
+                val modelIds = entry.modelOptions.map { it.id }.ifEmpty { listOfNotNull(entry.modelId) }
+                for (modelId in modelIds.distinct()) {
+                    add(BenchmarkTarget(entry.instanceId, service.id, modelId, "$modelId"))
+                }
+            }
+        }.ifEmpty {
+            // 没有模型分支时退化为测试当前模型
+            dataRepository.getServiceEntries().map { entry ->
+                BenchmarkTarget(entry.instanceId, entry.serviceId, entry.modelId, entry.modelId.ifEmpty { entry.serviceName })
+            }
+        }
+
+        if (candidates.isEmpty()) {
+            _state.update { it.copy(isBenchmarkRunning = false, benchmarkDone = true) }
+            return
+        }
+
+        _state.update {
+            it.copy(
+                isBenchmarkRunning = true,
+                benchmarkProgress = 0f,
+                benchmarkCurrentLabel = "",
+                benchmarkDone = false,
+                benchmarkSummary = "",
+                benchmarkDoneCount = 0,
+            )
+        }
+
+        val maxWaitMs = 60_000L
+        // 统一测试：所有候选同时发起，Semaphore 限制最大并发（防止服务端限流）。
+        val results = coroutineScope {
+            val limiter = Semaphore(BENCHMARK_CONCURRENCY)
+            candidates.map { target ->
+                async(backgroundDispatcher) {
+                    limiter.withPermit {
+                        currentCoroutineContext().ensureActive()
+                        val started = TimeSource.Monotonic.markNow()
+                        val response = try {
+                            dataRepository.askWithInstanceModel(
+                                instanceId = target.instanceId,
+                                modelId = target.modelId,
+                                prompt = BENCHMARK_PROMPT,
+                                systemPrompt = "You are a helpful assistant. Answer concisely.",
+                                timeoutMs = maxWaitMs,
+                            )
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            ""
+                        }
+                        val elapsedMs = started.elapsedNow().inWholeMilliseconds.coerceAtLeast(0L)
+
+                        val benchmark = scoreBenchmark(
+                            modelKey = "${target.serviceId}::${target.modelId}",
+                            modelLabel = target.label,
+                            serviceId = target.serviceId,
+                            response = response,
+                            elapsedMs = elapsedMs,
+                        )
+                        dataRepository.upsertModelBenchmark(benchmark)
+                        // MutableStateFlow.update 是原子的：线程安全地推进进度
+                        _state.update {
+                            val done = it.benchmarkDoneCount + 1
+                            it.copy(
+                                benchmarkDoneCount = done,
+                                benchmarkProgress = done.toFloat() / candidates.size,
+                                benchmarkCurrentLabel = "完成 $done/${candidates.size}：${target.label}",
+                            )
+                        }
+                        benchmark
+                    }
+                }
+            }.awaitAll()
+        }
+
+        val summary = buildBenchmarkSummary(results)
+        _state.update {
+            it.copy(
+                isBenchmarkRunning = false,
+                benchmarkProgress = 1f,
+                benchmarkCurrentLabel = "",
+                benchmarkDone = true,
+                benchmarkSummary = summary,
+                modelBenchmarks = dataRepository.getModelBenchmarks().toImmutableList(),
+            )
+        }
+    }
+
+    /** 生成测试结果统计文本：排名、平均分、最佳/最快/最长等。 */
+    private fun buildBenchmarkSummary(benchmarks: List<ModelBenchmark>): String {
+        if (benchmarks.isEmpty()) return "没有可用的测试结果。"
+        val ranked = benchmarks.sortedByDescending { it.totalScore }
+        val avg = benchmarks.map { it.totalScore }.average()
+        val failed = benchmarks.count { it.completion <= 0 }
+        val best = ranked.first()
+        val fastest = benchmarks.filter { it.completion > 0 }.minByOrNull { it.elapsedMs }
+        val longest = benchmarks.maxByOrNull { it.charCount }
+        return buildString {
+            appendLine("测试完成：共 ${benchmarks.size} 个模型，平均分 ${avg.roundToInt()}，失败（无响应）$failed 个")
+            appendLine()
+            appendLine("排名（总分降序）：")
+            ranked.forEachIndexed { i, bm ->
+                val status = if (bm.completion > 0) {
+                    "完成 ${bm.completion.roundToInt()}，耗时 ${bm.elapsedMs / 1000}s，${bm.charCount} 字"
+                } else {
+                    "无响应"
+                }
+                appendLine("${i + 1}. ${bm.modelLabel}：${bm.totalScore.roundToInt()} 分（$status）")
+            }
+            appendLine()
+            appendLine("最佳：${best.modelLabel}（${best.totalScore.roundToInt()} 分）")
+            fastest?.let { appendLine("最快：${it.modelLabel}（${it.elapsedMs / 1000}s）") }
+            longest?.let { appendLine("最长回复：${it.modelLabel}（${it.charCount} 字）") }
+        }
+    }
+
+    private fun scoreBenchmark(
+        modelKey: String,
+        modelLabel: String,
+        serviceId: String,
+        response: String,
+        elapsedMs: Long,
+    ): ModelBenchmark {
+        val charCount = response.length
+        // 模型返回失败（无有效响应）时直接为 0 分：所有分项与总分一律 0，
+        // 不允许通过"快速失败"在速度项上获利。
+        if (charCount <= 0) {
+            return ModelBenchmark(
+                modelKey = modelKey,
+                modelLabel = modelLabel,
+                serviceId = serviceId,
+                totalScore = 0.0,
+                completion = 0.0,
+                speed = 0.0,
+                responseSpeed = 0.0,
+                wordCount = 0.0,
+                elapsedMs = elapsedMs,
+                charCount = 0,
+                testedAt = kotlin.time.Clock.System.now().toEpochMilliseconds(),
+            )
+        }
+        // 完成度：非空响应得满分，否则 0
+        val completion = if (charCount > 0) 100.0 else 0.0
+        // 速度：60s 超时，线性映射 0..100（越快越高）
+        val speed = ((60_000 - elapsedMs).toDouble() / 60_000).coerceIn(0.0, 1.0) * 100.0
+        // 响应速度：字符/秒，封顶 50 cps → 100 分
+        val charsPerSec = if (elapsedMs > 0) charCount.toDouble() / (elapsedMs / 1000.0) else 0.0
+        val responseSpeed = (charsPerSec / 50.0).coerceIn(0.0, 1.0) * 100.0
+        // 字数：越多越好，封顶 500 字 → 100 分
+        val wordCount = (charCount / 500.0).coerceIn(0.0, 1.0) * 100.0
+
+        val weights = ModelBenchmark.WEIGHTS
+        val total = completion * weights["completion"]!! +
+            speed * weights["speed"]!! +
+            responseSpeed * weights["responseSpeed"]!! +
+            wordCount * weights["wordCount"]!!
+
+        return ModelBenchmark(
+            modelKey = modelKey,
+            modelLabel = modelLabel,
+            serviceId = serviceId,
+            totalScore = total.coerceIn(0.0, 100.0),
+            completion = completion,
+            speed = speed,
+            responseSpeed = responseSpeed,
+            wordCount = wordCount,
+            elapsedMs = elapsedMs,
+            charCount = charCount,
+            testedAt = kotlin.time.Clock.System.now().toEpochMilliseconds(),
+        )
+    }
+
+    private data class BenchmarkTarget(
+        val instanceId: String,
+        val serviceId: String,
+        val modelId: String,
+        val label: String,
+    )
+    // endregion
+
+    private fun sortedConfigured(entries: List<ConfiguredServiceEntry>, reversed: Boolean = _state.value.serviceSortReversed): List<ConfiguredServiceEntry> {
+        val sorted = entries.sortedBy { it.service.displayName }
+        return if (reversed) sorted.asReversed() else sorted
+    }
+
+    private fun sortedAvailable(services: List<Service>, reversed: Boolean = _state.value.serviceSortReversed): List<Service> {
+        val sorted = services.sortedBy { it.displayName }
+        return if (reversed) sorted.asReversed() else sorted
+    }
+
+    private fun ensureKeylessServicesConfigured() {
+        val configuredIds = dataRepository.getConfiguredServiceInstances().map { it.serviceId }.toSet()
+        Service.all.filter { !it.requiresApiKey && !it.isOnDevice && it != Service.Free && it !is Service.OpenAICompatible && it.id !in configuredIds }
+            .forEach { dataRepository.addConfiguredService(it.id) }
+    }
+
+    private fun onDownloadLocalModel(model: LocalModel) {
+        if (_state.value.localImportingFileName != null) return
+        dataRepository.startLocalModelDownload(model)
+    }
+
+    private fun onCancelLocalModelDownload() {
+        dataRepository.cancelLocalModelDownload()
+    }
+
+    private fun onImportLocalModel(file: PlatformFile) {
+        if (_state.value.localDownloadingModelId != null || _state.value.localImportingFileName != null) return
+        viewModelScope.launch(backgroundDispatcher) {
+            when (val result = dataRepository.importLocalModel(file)) {
+                is ModelImportResult.Success -> {
+                    // Auto-select the imported model on every LiteRT instance.
+                    _state.value.configuredServices
+                        .filter { it.service.isOnDevice }
+                        .forEach { entry ->
+                            dataRepository.updateInstanceSelectedModel(
+                                entry.instanceId,
+                                entry.service,
+                                result.modelId,
+                            )
+                        }
+                    refreshLocalModelsAfterChange()
+                }
+
+                is ModelImportResult.Failure -> {
+                    // importError flow already updated by the engine
+                    _state.update { it.copy(localFreeSpaceBytes = dataRepository.getLocalFreeSpaceBytes()) }
+                }
+            }
+        }
+    }
+
+    private fun onCancelLocalModelImport() {
+        dataRepository.cancelLocalModelImport()
+    }
+
+    private fun onChangeModelContextTokens(modelId: String, contextTokens: Int) {
+        if (_state.value.modelContextTokens[modelId] == contextTokens) return
+        dataRepository.setModelContextTokens(modelId, contextTokens)
+        _state.update {
+            it.copy(modelContextTokens = it.modelContextTokens.toMutableMap().apply { put(modelId, contextTokens) }.toImmutableMap())
+        }
+        // Release engine so the next message re-initializes with the new context size
+        viewModelScope.launch(backgroundDispatcher) {
+            dataRepository.releaseLocalEngine()
+        }
+    }
+
+    private fun buildModelContextTokensMap(): ImmutableMap<String, Int> {
+        val models = dataRepository.getLocalAvailableModels() + dataRepository.getLocalImportedModels()
+        return models.associate { model ->
+            val stored = dataRepository.getModelContextTokens(model.id)
+            model.id to if (stored > 0) stored else model.defaultContextTokens
+        }.toImmutableMap()
+    }
+
+    private fun onDeleteLocalModel(modelId: String) {
+        viewModelScope.launch(backgroundDispatcher) {
+            dataRepository.deleteLocalModel(modelId)
+            refreshLocalModelsAfterChange()
+        }
+    }
+
+    private fun onChangeUiScale(scale: Float) {
+        dataRepository.setUiScale(scale)
+        _state.update { it.copy(uiScale = scale) }
+    }
+
+    private fun onExportSettings(sections: Set<ImportSection>): String = dataRepository.exportSettingsToJson(sections)
+
+    private fun onPrepareExport(): Map<ImportSection, String?> = dataRepository.getExportPreview()
+
+    private fun onImportSettings(bytes: ByteArray, sections: Set<ImportSection>, replace: Boolean): ImportResult = try {
+        val currentTab = _state.value.currentTab
+        val errors = dataRepository.importSettingsFromJson(bytes.decodeToString(), sections, replace)
+        // Import writes conversations to settings, but the chat list reads them from
+        // ConversationStorage's in-memory flow — refresh it so imported chats appear
+        // without an app restart.
+        dataRepository.loadConversations()
+        _state.value = buildFullState().copy(currentTab = currentTab)
+        checkAllConnections()
+        connectEnabledMcpServers()
+        if (errors == 0) ImportResult.Success else ImportResult.PartialSuccess(errors)
+    } catch (_: Exception) {
+        ImportResult.Failure
+    }
+
+    private fun onToggleTool(toolId: String, enabled: Boolean) {
+        dataRepository.setToolEnabled(toolId, enabled)
+        _state.update { state ->
+            state.copy(
+                tools = state.tools.map { tool ->
+                    if (tool.id == toolId) tool.copy(isEnabled = enabled) else tool
+                }.toImmutableList(),
+                mcpServers = state.mcpServers.map { server ->
+                    server.copy(
+                        tools = server.tools.map { tool ->
+                            if (tool.id == toolId) tool.copy(isEnabled = enabled) else tool
+                        }.toImmutableList(),
+                    )
+                }.toImmutableList(),
+            )
+        }
+    }
+
+    // MCP server management
+    private fun buildMcpServerEntries(): List<McpServerUiState> = dataRepository.getMcpServers().map { config ->
+        McpServerUiState(
+            id = config.id,
+            name = config.name,
+            url = config.url,
+            isEnabled = config.isEnabled,
+            connectionStatus = if (dataRepository.isMcpServerConnected(config.id)) {
+                McpConnectionStatus.Connected
+            } else {
+                McpConnectionStatus.Unknown
+            },
+            tools = dataRepository.getMcpToolsForServer(config.id).toImmutableList(),
+        )
+    }
+
+    private fun refreshMcpServers() {
+        _state.update { current ->
+            val existingStatuses = current.mcpServers.associate { it.id to it.connectionStatus }
+            current.copy(
+                mcpServers = buildMcpServerEntries().map { entry ->
+                    val preservedStatus = existingStatuses[entry.id]
+                    // Only preserve transient statuses (Connecting/Error) — derive Connected/Unknown from actual state
+                    if (preservedStatus == McpConnectionStatus.Connecting || preservedStatus == McpConnectionStatus.Error) {
+                        entry.copy(connectionStatus = preservedStatus)
+                    } else {
+                        entry
+                    }
+                }.toImmutableList(),
+            )
+        }
+    }
+
+    private fun onAddMcpServer(name: String, url: String, headers: Map<String, String>) {
+        viewModelScope.launch(backgroundDispatcher) {
+            val config = dataRepository.addMcpServer(name, url, headers)
+            refreshMcpServers()
+            connectMcpServerWithStatus(config.id)
+        }
+        _state.update { it.copy(showAddMcpServerDialog = false) }
+    }
+
+    private fun onRemoveMcpServer(serverId: String) {
+        commitPendingDeletion()
+        _state.update { it.copy(pendingDeletion = PendingDeletion.McpServer(serverId)) }
+        pendingDeleteJob = viewModelScope.launch(backgroundDispatcher) {
+            delay(4.seconds)
+            executeDeletion(PendingDeletion.McpServer(serverId))
+        }
+    }
+
+    private fun onToggleMcpServer(serverId: String, enabled: Boolean) {
+        dataRepository.setMcpServerEnabled(serverId, enabled)
+        refreshMcpServers()
+        if (enabled) {
+            viewModelScope.launch(backgroundDispatcher) {
+                connectMcpServerWithStatus(serverId)
+            }
+        }
+    }
+
+    private fun onRefreshMcpServer(serverId: String) {
+        viewModelScope.launch(backgroundDispatcher) {
+            connectMcpServerWithStatus(serverId)
+        }
+    }
+
+    private fun onShowAddMcpServerDialog(show: Boolean) {
+        _state.update { it.copy(showAddMcpServerDialog = show) }
+    }
+
+    private fun onAddPopularMcpServer(server: PopularMcpServer) {
+        onAddMcpServer(server.name, server.url, server.headers)
+    }
+
+    // Skills ---------------------------------------------------------------
+
+    private fun refreshSkills() {
+        _state.update { it.copy(skills = dataRepository.getInstalledSkills().toImmutableList()) }
+    }
+
+    private fun onUninstallSkill(id: String) {
+        commitPendingDeletion()
+        _state.update { it.copy(pendingDeletion = PendingDeletion.Skill(id)) }
+        pendingDeleteJob = viewModelScope.launch(backgroundDispatcher) {
+            delay(4.seconds)
+            executeDeletion(PendingDeletion.Skill(id))
+        }
+    }
+
+    private fun onShowAddSkillDialog(show: Boolean) {
+        _state.update {
+            it.copy(
+                showAddSkillDialog = show,
+                skillInstallError = null,
+                // Lazily fetch the marketplaces the first time the dialog opens.
+                browseSkillsFailed = if (show) it.browseSkillsFailed else false,
+            )
+        }
+        if (show && _state.value.browsableSkills.isEmpty() && !_state.value.isBrowsingSkills) {
+            browseSkillMarketplaces()
+        }
+    }
+
+    private fun browseSkillMarketplaces() {
+        _state.update { it.copy(isBrowsingSkills = true, browseSkillsFailed = false) }
+        viewModelScope.launch(backgroundDispatcher) {
+            val result = dataRepository.browseSkillMarketplaces()
+            _state.update { state ->
+                state.copy(
+                    isBrowsingSkills = false,
+                    browsableSkills = result.getOrNull().orEmpty().toImmutableList(),
+                    browseSkillsFailed = result.isFailure,
+                )
+            }
+        }
+    }
+
+    private fun onInstallGitHubSkill(input: String) {
+        val source = parseGitHubSkillUrl(input)
+        if (source == null) {
+            viewModelScope.launch(backgroundDispatcher) {
+                _state.update { it.copy(skillInstallError = getString(Res.string.error_unrecognized_github_repo)) }
+            }
+            return
+        }
+        runSkillInstall { dataRepository.installGitHubSkill(source.owner, source.repo, source.ref, source.path) }
+    }
+
+    private fun onInstallBrowsedSkill(entry: com.inspiredandroid.kai.skills.RegistrySkillEntry) {
+        runSkillInstall { dataRepository.installBrowsedSkill(entry) }
+    }
+
+    private inline fun runSkillInstall(crossinline install: suspend () -> Result<com.inspiredandroid.kai.skills.SkillManifest>) {
+        _state.update { it.copy(isInstallingSkill = true, skillInstallError = null) }
+        viewModelScope.launch(backgroundDispatcher) {
+            val result = install()
+            result.fold(
+                onSuccess = {
+                    refreshSkills()
+                    _state.update { it.copy(isInstallingSkill = false, showAddSkillDialog = false) }
+                },
+                onFailure = { error ->
+                    val message = error.message ?: getString(Res.string.error_unknown)
+                    _state.update {
+                        it.copy(
+                            isInstallingSkill = false,
+                            skillInstallError = message,
+                        )
+                    }
+                },
+            )
+        }
+    }
+
+    private suspend fun connectMcpServerWithStatus(serverId: String) {
+        updateMcpConnectionStatus(serverId, McpConnectionStatus.Connecting)
+        val result = dataRepository.connectMcpServer(serverId)
+        if (result.isSuccess) {
+            updateMcpConnectionStatus(serverId, McpConnectionStatus.Connected)
+            refreshMcpServers()
+        } else {
+            updateMcpConnectionStatus(serverId, McpConnectionStatus.Error)
+        }
+    }
+
+    private fun updateMcpConnectionStatus(serverId: String, status: McpConnectionStatus) {
+        _state.update { state ->
+            state.copy(
+                mcpServers = state.mcpServers.map { entry ->
+                    if (entry.id == serverId) entry.copy(connectionStatus = status) else entry
+                }.toImmutableList(),
+            )
+        }
+    }
+
+    private fun connectEnabledMcpServers() {
+        val enabledServers = _state.value.mcpServers.filter { it.isEnabled && it.connectionStatus != McpConnectionStatus.Connected }
+        for (server in enabledServers) {
+            viewModelScope.launch(backgroundDispatcher) {
+                connectMcpServerWithStatus(server.id)
+            }
+        }
+    }
+
+    private fun commitPendingDeletion() {
+        pendingDeleteJob?.cancel()
+        pendingDeleteJob = null
+        val deletion = _state.value.pendingDeletion ?: return
+        _state.update { it.copy(pendingDeletion = null) }
+        viewModelScope.launch(backgroundDispatcher) {
+            executeDeletion(deletion)
+        }
+    }
+
+    private suspend fun executeDeletion(deletion: PendingDeletion) {
+        when (deletion) {
+            is PendingDeletion.Memory -> {
+                dataRepository.deleteMemory(deletion.key)
+                _state.update { it.copy(memories = dataRepository.getMemories().toImmutableList()) }
+            }
+
+            is PendingDeletion.Task -> {
+                dataRepository.cancelScheduledTask(deletion.id)
+                _state.update { it.copy(scheduledTasks = dataRepository.getScheduledTasks().toImmutableList()) }
+            }
+
+            is PendingDeletion.EmailAccount -> {
+                dataRepository.removeEmailAccount(deletion.id)
+                _state.update {
+                    it.copy(
+                        emailAccounts = dataRepository.getEmailAccounts().toImmutableList(),
+                        emailSyncStates = dataRepository.getEmailSyncStates().toImmutableMap(),
+                        emailPendingCount = dataRepository.getPendingEmailCount(),
+                    )
+                }
+            }
+
+            is PendingDeletion.Service -> {
+                val service = _state.value.configuredServices.find { it.instanceId == deletion.instanceId }?.service
+                dataRepository.removeConfiguredService(deletion.instanceId)
+                // If removing the last on-device service, delete all downloaded models
+                if (service?.isOnDevice == true) {
+                    val hasOtherOnDevice = dataRepository.getConfiguredServiceInstances().any {
+                        Service.fromId(it.serviceId).isOnDevice
+                    }
+                    if (!hasOtherOnDevice) {
+                        dataRepository.getLocalDownloadedModels().forEach {
+                            dataRepository.deleteLocalModel(it.id)
+                        }
+                        _state.update { it.copy(localFreeSpaceBytes = dataRepository.getLocalFreeSpaceBytes()) }
+                    }
+                }
+                refreshServiceList()
+            }
+
+            is PendingDeletion.McpServer -> {
+                dataRepository.removeMcpServer(deletion.serverId)
+                refreshMcpServers()
+            }
+
+            is PendingDeletion.Skill -> {
+                dataRepository.uninstallSkill(deletion.id)
+                refreshSkills()
+            }
+        }
+        // Guard against a stale async deletion clobbering a newer pending one from a rapid second Remove click.
+        _state.update { state ->
+            if (state.pendingDeletion == deletion) state.copy(pendingDeletion = null) else state
+        }
+    }
+
+    private fun onUndoDelete() {
+        pendingDeleteJob?.cancel()
+        pendingDeleteJob = null
+        _state.update { it.copy(pendingDeletion = null) }
+    }
+
+    override fun onCleared() {
+        pendingDeleteJob?.cancel()
+        pendingDeleteJob = null
+        val deletion = _state.value.pendingDeletion ?: run {
+            super.onCleared()
+            return
+        }
+        _state.update { it.copy(pendingDeletion = null) }
+        CoroutineScope(backgroundDispatcher).launch {
+            executeDeletion(deletion)
+        }
+        super.onCleared()
+    }
+
+    private fun checkAllConnections() {
+        for (entry in _state.value.configuredServices) {
+            checkConnection(entry.instanceId, entry.service)
+        }
+    }
+
+    private fun checkConnectionDebounced(instanceId: String, service: Service) {
+        connectionCheckJobs[instanceId]?.cancel()
+        connectionCheckJobs[instanceId] = viewModelScope.launch {
+            delay(800.milliseconds)
+            checkConnection(instanceId, service)
+        }
+    }
+
+    private fun checkConnection(instanceId: String, service: Service) {
+        if (service == Service.Free) {
+            updateConnectionStatus(instanceId, ConnectionStatus.Connected)
+            return
+        }
+        if (service.isOnDevice) {
+            validateConnectionWithStatus(instanceId, service)
+            return
+        }
+        if (service.requiresApiKey && dataRepository.getInstanceApiKey(instanceId).isBlank()) {
+            updateConnectionStatus(instanceId, ConnectionStatus.Unknown)
+            return
+        }
+        validateConnectionWithStatus(instanceId, service)
+    }
+
+    private fun updateConnectionStatus(instanceId: String, status: ConnectionStatus) {
+        _state.update { state ->
+            state.copy(
+                configuredServices = state.configuredServices.map { entry ->
+                    if (entry.instanceId == instanceId) {
+                        entry.copy(connectionStatus = status)
+                    } else {
+                        entry
+                    }
+                }.toImmutableList(),
+            )
+        }
+    }
+
+    private fun validateConnectionWithStatus(instanceId: String, service: Service) {
+        updateConnectionStatus(instanceId, ConnectionStatus.Checking)
+        viewModelScope.launch(backgroundDispatcher) {
+            // Android 17+ blocks LAN traffic without the local network permission, so ask
+            // before probing — otherwise the check fails with a misleading connection error.
+            val baseUrl = dataRepository.getInstanceBaseUrl(instanceId, service)
+            if (isLocalNetworkUrl(baseUrl) && !localNetworkPermissionController.requestPermission()) {
+                updateConnectionStatus(instanceId, ConnectionStatus.ErrorLocalNetworkDenied)
+                return@launch
+            }
+            try {
+                dataRepository.validateConnection(service, instanceId)
+                if (service.isOnDevice && dataRepository.getLocalDownloadedModels().isEmpty()) {
+                    updateConnectionStatus(instanceId, ConnectionStatus.Unknown)
+                } else {
+                    updateConnectionStatus(instanceId, ConnectionStatus.Connected)
+                }
+                refreshInstanceModels(instanceId)
+            } catch (e: Exception) {
+                val status = when (e) {
+                    is OpenAICompatibleInvalidApiKeyException, is GeminiInvalidApiKeyException, is AnthropicInvalidApiKeyException ->
+                        ConnectionStatus.ErrorInvalidKey
+
+                    is OpenAICompatibleQuotaExhaustedException, is AnthropicInsufficientCreditsException ->
+                        ConnectionStatus.ErrorQuotaExhausted
+
+                    is OpenAICompatibleRateLimitExceededException, is GeminiRateLimitExceededException, is AnthropicRateLimitExceededException ->
+                        ConnectionStatus.ErrorRateLimited
+
+                    is AnthropicOverloadedException ->
+                        ConnectionStatus.Error
+
+                    is OpenAICompatibleConnectionException ->
+                        ConnectionStatus.ErrorConnectionFailed
+
+                    else -> ConnectionStatus.Error
+                }
+                updateConnectionStatus(instanceId, status)
+            }
+        }
+    }
+
+    companion object {
+        private const val BENCHMARK_PROMPT = "请回答：1+1 等于几？并简要解释你的推理过程。"
+        /** 统一测试的最大并发路数（防止同时打爆服务端限流）。 */
+        private const val BENCHMARK_CONCURRENCY = 6
+    }
+}
