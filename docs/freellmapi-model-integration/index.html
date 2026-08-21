@@ -1,0 +1,2776 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for Kai - AI Assistant App">
+      
+      
+      
+        <link rel="canonical" href="https://kai9000.com/docs/freellmapi-model-integration/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>FreeLLMAPI 大模型清单与 Kai 整合报告 - Kai Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#freellmapi-kai" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Kai Documentation" class="md-header__button md-logo" aria-label="Kai Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Kai Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              FreeLLMAPI 大模型清单与 Kai 整合报告
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Kai Documentation" class="md-nav__button md-logo" aria-label="Kai Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Kai Documentation
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat & Conversations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/multi-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP Servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/dynamic-ui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dynamic UI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/memories/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memories
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/heartbeat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Heartbeat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/tasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/daemon/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Daemon
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/encryption/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encryption
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/settings-export-import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings Export & Import
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/splinterlands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Splinterlands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#freellmapi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        一、FreeLLMAPI 支持的大模型全景
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        二、本次整合的新平台与模型补全
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="二、本次整合的新平台与模型补全">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        新增平台（17 个）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        三、各新平台模型明细
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="三、各新平台模型明细">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ainative-studio-ainative-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AINative Studio (ainative) — 4 个模型
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aion-labs-aion-5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Aion Labs (aion) — 5 个模型
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bazaarlink-bazaarlink-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BazaarLink (bazaarlink) — 1 个模型
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cloudflare-workers-ai-cloudflare-18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cloudflare Workers AI (cloudflare) — 18 个模型
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cohere-cohere-11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cohere (cohere) — 11 个模型
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kilo-gateway-kilo-9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kilo Gateway (kilo) — 9 个模型
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llm7-llm7-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM7 (llm7) — 1 个模型
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nararouter-nara-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NaraRouter (nara) — 2 个模型
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#navyai-navy-87" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NavyAI (navy) — 87 个模型
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ovh-ai-endpoints-ovh-13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OVH AI Endpoints (ovh) — 13 个模型
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reka-reka-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reka (reka) — 2 个模型
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#requesty-requesty-7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requesty (requesty) — 7 个模型
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#routeway-routeway-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Routeway (routeway) — 4 个模型
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sea-lion-sealion-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SEA-LION (sealion) — 4 个模型
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zhipu-ai-zhipu-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Zhipu AI (智谱) (zhipu) — 3 个模型
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kai-12-91" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        四、Kai 已有平台（跳过，共 12 平台 91 模型）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        五、去重与一致性验证
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="freellmapi-kai">FreeLLMAPI 大模型清单与 Kai 整合报告</h1>
+<blockquote>
+<p>数据来源：本机 FreeLLMAPI Desktop 应用 catalog（version 2026.08.18, monthly tier）+ GitHub 源码 <code>tashfeenahmed/freellmapi</code>。
+生成时间：2026-08-18</p>
+</blockquote>
+<h2 id="freellmapi">一、FreeLLMAPI 支持的大模型全景</h2>
+<p>FreeLLMAPI 聚合网关源码共注册 <strong>33 个平台</strong>（Platform 类型）。其中本机 monthly catalog 同步了 27 个平台、262 个模型端点；另有 <strong>GitHub Models、Pollinations</strong> 两个平台在源码中有模型声明但未进入本机 monthly catalog（premium/catalog 门控），已按源码 baseline 一并整合。其余已注册平台（anyapi / sambanova / siliconflow / orcarouter / modelscope）无模型声明或已弃用/移除，无需整合。</p>
+<table>
+<thead>
+<tr>
+<th>平台</th>
+<th>模型数</th>
+<th>调用方式</th>
+<th>接入状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agnes AI (agnes)</td>
+<td>1</td>
+<td>OpenAI 兼容</td>
+<td>✅ Kai 已支持（跳过）</td>
+</tr>
+<tr>
+<td>AI Horde (aihorde)</td>
+<td>1</td>
+<td>OpenAI 兼容</td>
+<td>✅ Kai 已支持（跳过）</td>
+</tr>
+<tr>
+<td>AINative Studio (ainative)</td>
+<td>4</td>
+<td>OpenAI 兼容</td>
+<td>🆕 已整合进 Kai</td>
+</tr>
+<tr>
+<td>Aion Labs (aion)</td>
+<td>5</td>
+<td>OpenAI 兼容</td>
+<td>🆕 已整合进 Kai</td>
+</tr>
+<tr>
+<td>BazaarLink (bazaarlink)</td>
+<td>1</td>
+<td>OpenAI 兼容</td>
+<td>🆕 已整合进 Kai</td>
+</tr>
+<tr>
+<td>Cerebras (cerebras)</td>
+<td>3</td>
+<td>OpenAI 兼容</td>
+<td>✅ Kai 已支持（跳过）</td>
+</tr>
+<tr>
+<td>Cloudflare Workers AI (cloudflare)</td>
+<td>18</td>
+<td>OpenAI 兼容</td>
+<td>🆕 已整合进 Kai</td>
+</tr>
+<tr>
+<td>Cohere (cohere)</td>
+<td>11</td>
+<td>OpenAI 兼容</td>
+<td>🆕 已整合进 Kai</td>
+</tr>
+<tr>
+<td>OpenAI-Compatible (自定义) (custom)</td>
+<td>10</td>
+<td>OpenAI 兼容</td>
+<td>✅ Kai 已支持（跳过）</td>
+</tr>
+<tr>
+<td>Google Gemini (google)</td>
+<td>7</td>
+<td>OpenAI 兼容</td>
+<td>✅ Kai 已支持（跳过）</td>
+</tr>
+<tr>
+<td>Groq (groq)</td>
+<td>7</td>
+<td>OpenAI 兼容</td>
+<td>✅ Kai 已支持（跳过）</td>
+</tr>
+<tr>
+<td>Hugging Face (huggingface)</td>
+<td>13</td>
+<td>OpenAI 兼容</td>
+<td>✅ Kai 已支持（跳过）</td>
+</tr>
+<tr>
+<td>Kilo Gateway (kilo)</td>
+<td>9</td>
+<td>OpenAI 兼容</td>
+<td>🆕 已整合进 Kai</td>
+</tr>
+<tr>
+<td>LLM7 (llm7)</td>
+<td>1</td>
+<td>OpenAI 兼容</td>
+<td>🆕 已整合进 Kai</td>
+</tr>
+<tr>
+<td>Mistral (mistral)</td>
+<td>13</td>
+<td>OpenAI 兼容</td>
+<td>✅ Kai 已支持（跳过）</td>
+</tr>
+<tr>
+<td>NaraRouter (nara)</td>
+<td>2</td>
+<td>OpenAI 兼容</td>
+<td>🆕 已整合进 Kai</td>
+</tr>
+<tr>
+<td>NavyAI (navy)</td>
+<td>87</td>
+<td>OpenAI 兼容</td>
+<td>🆕 已整合进 Kai</td>
+</tr>
+<tr>
+<td>NVIDIA NIM (nvidia)</td>
+<td>15</td>
+<td>OpenAI 兼容</td>
+<td>✅ Kai 已支持（跳过）</td>
+</tr>
+<tr>
+<td>Ollama Cloud (ollama)</td>
+<td>4</td>
+<td>OpenAI 兼容</td>
+<td>✅ Kai 已支持（跳过）</td>
+</tr>
+<tr>
+<td>OpenCode Zen (opencode)</td>
+<td>5</td>
+<td>OpenAI 兼容</td>
+<td>✅ Kai 已支持（跳过）</td>
+</tr>
+<tr>
+<td>OpenRouter (openrouter)</td>
+<td>12</td>
+<td>OpenAI 兼容</td>
+<td>✅ Kai 已支持（跳过）</td>
+</tr>
+<tr>
+<td>OVH AI Endpoints (ovh)</td>
+<td>13</td>
+<td>OpenAI 兼容</td>
+<td>🆕 已整合进 Kai</td>
+</tr>
+<tr>
+<td>Reka (reka)</td>
+<td>2</td>
+<td>OpenAI 兼容</td>
+<td>🆕 已整合进 Kai</td>
+</tr>
+<tr>
+<td>Requesty (requesty)</td>
+<td>7</td>
+<td>OpenAI 兼容</td>
+<td>🆕 已整合进 Kai</td>
+</tr>
+<tr>
+<td>Routeway (routeway)</td>
+<td>4</td>
+<td>OpenAI 兼容</td>
+<td>🆕 已整合进 Kai</td>
+</tr>
+<tr>
+<td>SEA-LION (sealion)</td>
+<td>4</td>
+<td>OpenAI 兼容</td>
+<td>🆕 已整合进 Kai</td>
+</tr>
+<tr>
+<td>Zhipu AI (智谱) (zhipu)</td>
+<td>3</td>
+<td>OpenAI 兼容</td>
+<td>🆕 已整合进 Kai</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">二、本次整合的新平台与模型补全</h2>
+<blockquote>
+<p><strong>说明（第二轮核查）</strong>：第一轮仅基于本机 monthly catalog（27 平台）。用户指出 GitHub Models 后重新核查源码：
+- 源码 baseline 中 GitHub Models（github）有 gpt-4o / openai/gpt-4.1 模型声明，Pollinations（pollinations）有 openai-fast 声明 → <strong>补充整合</strong>；
+- LLM7 在源码 baseline 有 5 个模型，本机 catalog 仅同步 1 个 → <strong>补全 4 个</strong>；
+- sambanova 已在 V23 弃用（免费层永久消失）、siliconflow 模型行在 V15 被删除、anyapi/orcarouter/modelscope 无模型声明 → 均不整合。</p>
+</blockquote>
+<h3 id="17">新增平台（17 个）</h3>
+<table>
+<thead>
+<tr>
+<th>服务 (id)</th>
+<th>接入端点</th>
+<th>调用方式</th>
+<th>Key 获取</th>
+<th>模型数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AINative Studio (<code>ainative</code>)</td>
+<td><code>https://api.ainative.studio/api/v1</code></td>
+<td>OpenAI 兼容 (Bearer)</td>
+<td>https://ainative.studio</td>
+<td>4</td>
+</tr>
+<tr>
+<td>Aion Labs (<code>aion</code>)</td>
+<td><code>https://api.aionlabs.ai/v1</code></td>
+<td>OpenAI 兼容 (Bearer)</td>
+<td>https://aionlabs.ai</td>
+<td>5</td>
+</tr>
+<tr>
+<td>BazaarLink (<code>bazaarlink</code>)</td>
+<td><code>https://bazaarlink.ai/api/v1</code></td>
+<td>OpenAI 兼容 (Bearer)</td>
+<td>https://bazaarlink.ai</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Cloudflare Workers AI (<code>cloudflare</code>)</td>
+<td><code>https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1</code></td>
+<td>OpenAI 兼容 (Bearer token，key 格式 account_id:token)</td>
+<td>https://dash.cloudflare.com/profile/api-tokens</td>
+<td>18</td>
+</tr>
+<tr>
+<td>Cohere (<code>cohere</code>)</td>
+<td><code>https://api.cohere.ai/compatibility/v1</code></td>
+<td>OpenAI 兼容 (Bearer)</td>
+<td>https://dashboard.cohere.com/api-keys</td>
+<td>11</td>
+</tr>
+<tr>
+<td>Kilo Gateway (<code>kilo</code>)</td>
+<td><code>https://api.kilo.ai/api/gateway/v1</code></td>
+<td>OpenAI 兼容 (keyless 匿名)</td>
+<td>https://kilo.ai</td>
+<td>9</td>
+</tr>
+<tr>
+<td>GitHub Models (<code>github</code>)</td>
+<td><code>https://models.github.ai/inference</code></td>
+<td>OpenAI 兼容 (Bearer，GitHub PAT)</td>
+<td>github.com/settings/tokens</td>
+<td>2</td>
+</tr>
+<tr>
+<td>Pollinations (<code>pollinations</code>)</td>
+<td><code>https://gen.pollinations.ai/v1</code></td>
+<td>OpenAI 兼容 (keyless 匿名)</td>
+<td>pollinations.ai</td>
+<td>1</td>
+</tr>
+<tr>
+<td>LLM7 (<code>llm7</code>)</td>
+<td><code>https://api.llm7.io/v1</code></td>
+<td>OpenAI 兼容 (Bearer)</td>
+<td>https://llm7.io</td>
+<td>5（补全 4）</td>
+</tr>
+<tr>
+<td>NaraRouter (<code>nara</code>)</td>
+<td><code>https://router.bynara.id/v1</code></td>
+<td>OpenAI 兼容 (Bearer)</td>
+<td>https://router.bynara.id</td>
+<td>2</td>
+</tr>
+<tr>
+<td>NavyAI (<code>navy</code>)</td>
+<td><code>https://api.navy/v1</code></td>
+<td>OpenAI 兼容 (Bearer, UA 头)</td>
+<td>https://api.navy</td>
+<td>87</td>
+</tr>
+<tr>
+<td>OVH AI Endpoints (<code>ovh</code>)</td>
+<td><code>https://oai.endpoints.kepler.ai.cloud.ovh.net/v1</code></td>
+<td>OpenAI 兼容 (keyless 匿名)</td>
+<td>https://endpoints.ai.cloud.ovh.net</td>
+<td>13</td>
+</tr>
+<tr>
+<td>Reka (<code>reka</code>)</td>
+<td><code>https://api.reka.ai/v1</code></td>
+<td>OpenAI 兼容 (Bearer)</td>
+<td>https://platform.reka.ai</td>
+<td>2</td>
+</tr>
+<tr>
+<td>Requesty (<code>requesty</code>)</td>
+<td><code>https://router.requesty.ai/v1</code></td>
+<td>OpenAI 兼容 (Bearer)</td>
+<td>https://requesty.ai</td>
+<td>7</td>
+</tr>
+<tr>
+<td>Routeway (<code>routeway</code>)</td>
+<td><code>https://api.routeway.ai/v1</code></td>
+<td>OpenAI 兼容 (Bearer, 浏览器 UA)</td>
+<td>https://routeway.ai</td>
+<td>4</td>
+</tr>
+<tr>
+<td>SEA-LION (<code>sealion</code>)</td>
+<td><code>https://api.sea-lion.ai/v1</code></td>
+<td>OpenAI 兼容 (Bearer)</td>
+<td>https://sea-lion.ai</td>
+<td>4</td>
+</tr>
+<tr>
+<td>Zhipu AI (智谱) (<code>zhipu</code>)</td>
+<td><code>https://open.bigmodel.cn/api/paas/v4</code></td>
+<td>OpenAI 兼容 (Bearer)</td>
+<td>https://open.bigmodel.cn</td>
+<td>3</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">三、各新平台模型明细</h2>
+<h3 id="ainative-studio-ainative-4">AINative Studio (ainative) — 4 个模型</h3>
+<table>
+<thead>
+<tr>
+<th>模型 ID</th>
+<th>显示名</th>
+<th>上下文窗口</th>
+<th>视觉</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>llama-4-maverick</code></td>
+<td>Llama 4 Maverick (AINative)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>qwen3-14b</code></td>
+<td>Qwen3 14B (AINative)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>qwen3-32b</code></td>
+<td>Qwen3 32B (AINative)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>qwen3-8b</code></td>
+<td>Qwen3 8B (AINative)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h3 id="aion-labs-aion-5">Aion Labs (aion) — 5 个模型</h3>
+<table>
+<thead>
+<tr>
+<th>模型 ID</th>
+<th>显示名</th>
+<th>上下文窗口</th>
+<th>视觉</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>aion-labs/aion-2.0</code></td>
+<td>Aion 2.0</td>
+<td>131072</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>aion-labs/aion-2.5</code></td>
+<td>Aion 2.5</td>
+<td>131072</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>aion-labs/aion-3.0</code></td>
+<td>Aion 3.0</td>
+<td>131072</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>aion-labs/aion-3.0-mini</code></td>
+<td>Aion 3.0 Mini</td>
+<td>131072</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>aion-labs/aion-rp-llama-3.1-8b</code></td>
+<td>Aion-RP Llama 3.1 8B</td>
+<td>32768</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="bazaarlink-bazaarlink-1">BazaarLink (bazaarlink) — 1 个模型</h3>
+<table>
+<thead>
+<tr>
+<th>模型 ID</th>
+<th>显示名</th>
+<th>上下文窗口</th>
+<th>视觉</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auto:free</code></td>
+<td>BazaarLink Auto (free router)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h3 id="cloudflare-workers-ai-cloudflare-18">Cloudflare Workers AI (cloudflare) — 18 个模型</h3>
+<table>
+<thead>
+<tr>
+<th>模型 ID</th>
+<th>显示名</th>
+<th>上下文窗口</th>
+<th>视觉</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>@cf/aisingapore/gemma-sea-lion-v4-27b-it</code></td>
+<td>Gemma SEA-LION v4 27B (CF)</td>
+<td>131072</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>@cf/deepseek-ai/deepseek-r1-distill-qwen-32b</code></td>
+<td>DeepSeek R1 Distill Qwen 32B (CF)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>@cf/google/gemma-4-26b-a4b-it</code></td>
+<td>Gemma 4 26B-A4B it (CF)</td>
+<td>262144</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>@cf/ibm-granite/granite-4.0-h-micro</code></td>
+<td>Granite 4.0 H Micro (CF)</td>
+<td>131072</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>@cf/meta/llama-3.1-8b-instruct-fp8</code></td>
+<td>Llama 3.1 8B (CF)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>@cf/meta/llama-3.2-11b-vision-instruct</code></td>
+<td>Llama 3.2 11B Vision (CF)</td>
+<td>131072</td>
+<td>✅</td>
+<td></td>
+</tr>
+<tr>
+<td><code>@cf/meta/llama-3.2-3b-instruct</code></td>
+<td>Llama 3.2 3B (CF)</td>
+<td>131072</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>@cf/meta/llama-3.3-70b-instruct-fp8-fast</code></td>
+<td>Llama 3.3 70B fp8-fast (CF)</td>
+<td>24000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>@cf/meta/llama-4-scout-17b-16e-instruct</code></td>
+<td>Llama 4 Scout (CF)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>@cf/meta/llama-guard-3-8b</code></td>
+<td>Llama Guard 3 8B (CF)</td>
+<td>131072</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>@cf/mistralai/mistral-small-3.1-24b-instruct</code></td>
+<td>Mistral Small 3.1 24B (CF)</td>
+<td>131072</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>@cf/nvidia/nemotron-3-120b-a12b</code></td>
+<td>Nemotron 3 120B (CF)</td>
+<td>262144</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>@cf/openai/gpt-oss-120b</code></td>
+<td>GPT-OSS 120B (CF)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>@cf/openai/gpt-oss-20b</code></td>
+<td>GPT-OSS 20B (CF)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>@cf/qwen/qwen2.5-coder-32b-instruct</code></td>
+<td>Qwen2.5 Coder 32B (CF)</td>
+<td>32768</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>@cf/qwen/qwen3-30b-a3b-fp8</code></td>
+<td>Qwen3 30B-A3B fp8 (CF)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>@cf/qwen/qwq-32b</code></td>
+<td>QwQ 32B (CF)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>@cf/zai-org/glm-4.7-flash</code></td>
+<td>GLM-4.7 Flash (CF)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h3 id="cohere-cohere-11">Cohere (cohere) — 11 个模型</h3>
+<table>
+<thead>
+<tr>
+<th>模型 ID</th>
+<th>显示名</th>
+<th>上下文窗口</th>
+<th>视觉</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>c4ai-aya-expanse-32b</code></td>
+<td>Aya Expanse 32B</td>
+<td>131072</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>c4ai-aya-vision-32b</code></td>
+<td>Aya Vision 32B</td>
+<td>16384</td>
+<td>✅</td>
+<td></td>
+</tr>
+<tr>
+<td><code>command-a-03-2025</code></td>
+<td>Command-A (03-2025)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>command-a-plus-05-2026</code></td>
+<td>Command A+ (05-2026)</td>
+<td>131072</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>command-a-reasoning-08-2025</code></td>
+<td>Command A Reasoning (08-2025)</td>
+<td>256000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>command-a-translate-08-2025</code></td>
+<td>Command A Translate (08-2025)</td>
+<td>256000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>command-a-vision-07-2025</code></td>
+<td>Command A Vision (07-2025)</td>
+<td>128000</td>
+<td>✅</td>
+<td></td>
+</tr>
+<tr>
+<td><code>command-r-08-2024</code></td>
+<td>Command R (08-2024)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>command-r-plus-08-2024</code></td>
+<td>Command R+ (08-2024)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>command-r7b-12-2024</code></td>
+<td>Command R7B (12-2024)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>north-mini-code-1-0</code></td>
+<td>North Mini Code</td>
+<td>256000</td>
+<td></td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h3 id="kilo-gateway-kilo-9">Kilo Gateway (kilo) — 9 个模型</h3>
+<table>
+<thead>
+<tr>
+<th>模型 ID</th>
+<th>显示名</th>
+<th>上下文窗口</th>
+<th>视觉</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cohere/north-mini-code:free</code></td>
+<td>North Mini Code (Kilo)</td>
+<td>256000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>kilo-auto/free</code></td>
+<td>Kilo Auto Free</td>
+<td>256000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free</code></td>
+<td>Nemotron 3 Nano Omni Reasoning (Kilo)</td>
+<td>256000</td>
+<td>✅</td>
+<td></td>
+</tr>
+<tr>
+<td><code>nvidia/nemotron-3-super-120b-a12b:free</code></td>
+<td>Nemotron 3 Super 120B (Kilo)</td>
+<td>262144</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>nvidia/nemotron-3-ultra-550b-a55b:free</code></td>
+<td>Nemotron 3 Ultra 550B (Kilo)</td>
+<td>1000000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>nvidia/nemotron-3.5-content-safety:free</code></td>
+<td>Nemotron 3.5 Content Safety (Kilo)</td>
+<td>128000</td>
+<td>✅</td>
+<td></td>
+</tr>
+<tr>
+<td><code>openrouter/free</code></td>
+<td>Free Router (Kilo)</td>
+<td>200000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>poolside/laguna-xs-2.1:free</code></td>
+<td>Poolside Laguna XS 2.1 (Kilo)</td>
+<td>262144</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>stepfun/step-3.7-flash:free</code></td>
+<td>StepFun Step 3.7 Flash (Kilo)</td>
+<td>262144</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="llm7-llm7-1">LLM7 (llm7) — 1 个模型</h3>
+<table>
+<thead>
+<tr>
+<th>模型 ID</th>
+<th>显示名</th>
+<th>上下文窗口</th>
+<th>视觉</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>codestral-latest</code></td>
+<td>Codestral (LLM7)</td>
+<td>32000</td>
+<td></td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h3 id="nararouter-nara-2">NaraRouter (nara) — 2 个模型</h3>
+<table>
+<thead>
+<tr>
+<th>模型 ID</th>
+<th>显示名</th>
+<th>上下文窗口</th>
+<th>视觉</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mistral-large</code></td>
+<td>Mistral Large 3 (NaraRouter)</td>
+<td>252000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>mistral-medium-3-5</code></td>
+<td>Mistral Medium 3.5 (NaraRouter)</td>
+<td>256000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h3 id="navyai-navy-87">NavyAI (navy) — 87 个模型</h3>
+<table>
+<thead>
+<tr>
+<th>模型 ID</th>
+<th>显示名</th>
+<th>上下文窗口</th>
+<th>视觉</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>c4ai-aya-expanse-32b</code></td>
+<td>C4ai Aya Expanse 32B (NavyAI)</td>
+<td>-</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>c4ai-aya-vision-32b</code></td>
+<td>C4ai Aya Vision 32B (NavyAI)</td>
+<td>-</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>codestral-2508</code></td>
+<td>Codestral 2508 (NavyAI)</td>
+<td>256000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>codestral-latest</code></td>
+<td>Codestral Latest (NavyAI)</td>
+<td>256000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>command-a</code></td>
+<td>Command A (NavyAI)</td>
+<td>256000</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>command-a-plus</code></td>
+<td>Command A Plus (NavyAI)</td>
+<td>256000</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>command-a-reasoning</code></td>
+<td>Command A Reasoning (NavyAI)</td>
+<td>256000</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>command-a-vision</code></td>
+<td>Command A Vision (NavyAI)</td>
+<td>256000</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>command-r</code></td>
+<td>Command R (NavyAI)</td>
+<td>128000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>command-r-7b</code></td>
+<td>Command R 7B (NavyAI)</td>
+<td>128000</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>command-r-plus</code></td>
+<td>Command R Plus (NavyAI)</td>
+<td>128000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>deepseek-chat</code></td>
+<td>Deepseek Chat (NavyAI)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>deepseek-reasoner</code></td>
+<td>Deepseek Reasoner (NavyAI)</td>
+<td>-</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>deepseek-v3.2</code></td>
+<td>Deepseek V3.2 (NavyAI)</td>
+<td>163840</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>deepseek-v4-flash</code></td>
+<td>Deepseek V4 Flash (NavyAI)</td>
+<td>1048576</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>deepseek-v4-pro</code></td>
+<td>Deepseek V4 Pro (NavyAI)</td>
+<td>1048576</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gemini-2.5-flash</code></td>
+<td>Gemini 2.5 Flash (NavyAI)</td>
+<td>1048576</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gemini-2.5-flash-image</code></td>
+<td>Gemini 2.5 Flash Image (NavyAI)</td>
+<td>32768</td>
+<td>✅</td>
+<td></td>
+</tr>
+<tr>
+<td><code>gemini-2.5-flash-lite</code></td>
+<td>Gemini 2.5 Flash Lite (NavyAI)</td>
+<td>1048576</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gemini-2.5-flash-thinking</code></td>
+<td>Gemini 2.5 Flash Thinking (NavyAI)</td>
+<td>1048576</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gemini-3-flash-preview</code></td>
+<td>Gemini 3 Flash Preview (NavyAI)</td>
+<td>1048576</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gemini-3-flash-preview-thinking</code></td>
+<td>Gemini 3 Flash Preview Thinking (NavyAI)</td>
+<td>1048576</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gemini-3.1-flash-lite</code></td>
+<td>Gemini 3.1 Flash Lite (NavyAI)</td>
+<td>1048576</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gemini-3.1-flash-lite-thinking</code></td>
+<td>Gemini 3.1 Flash Lite Thinking (NavyAI)</td>
+<td>1048576</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gemma-4-26b-a4b-it</code></td>
+<td>Gemma 4 26B A4b IT (NavyAI)</td>
+<td>262144</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gemma-4-31b-it</code></td>
+<td>Gemma 4 31B IT (NavyAI)</td>
+<td>262144</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>glm-5.1</code></td>
+<td>GLM 5.1 (NavyAI)</td>
+<td>202752</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>glm-5.2</code></td>
+<td>GLM 5.2 (NavyAI)</td>
+<td>1048576</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-3.5-turbo</code></td>
+<td>GPT 3.5 Turbo (NavyAI)</td>
+<td>16385</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-4.1</code></td>
+<td>GPT 4.1 (NavyAI)</td>
+<td>1047576</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-4.1-mini</code></td>
+<td>GPT 4.1 Mini (NavyAI)</td>
+<td>1047576</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-4.1-nano</code></td>
+<td>GPT 4.1 Nano (NavyAI)</td>
+<td>1047576</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-4o</code></td>
+<td>GPT 4o (NavyAI)</td>
+<td>128000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-4o-mini</code></td>
+<td>GPT 4o Mini (NavyAI)</td>
+<td>128000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-4o-mini-search-preview</code></td>
+<td>GPT 4o Mini Search Preview (NavyAI)</td>
+<td>128000</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>gpt-4o-search-preview</code></td>
+<td>GPT 4o Search Preview (NavyAI)</td>
+<td>128000</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>gpt-5</code></td>
+<td>GPT 5 (NavyAI)</td>
+<td>400000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-5-mini</code></td>
+<td>GPT 5 Mini (NavyAI)</td>
+<td>400000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-5-nano</code></td>
+<td>GPT 5 Nano (NavyAI)</td>
+<td>400000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-5-search-api</code></td>
+<td>GPT 5 Search API (NavyAI)</td>
+<td>400000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-5.1</code></td>
+<td>GPT 5.1 (NavyAI)</td>
+<td>400000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-5.2</code></td>
+<td>GPT 5.2 (NavyAI)</td>
+<td>400000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-5.3-codex</code></td>
+<td>GPT 5.3 Codex (NavyAI)</td>
+<td>400000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-5.4</code></td>
+<td>GPT 5.4 (NavyAI)</td>
+<td>1050000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-5.4-mini</code></td>
+<td>GPT 5.4 Mini (NavyAI)</td>
+<td>400000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-5.4-nano</code></td>
+<td>GPT 5.4 Nano (NavyAI)</td>
+<td>400000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-oss-120b</code></td>
+<td>GPT Oss 120B (NavyAI)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-oss-20b</code></td>
+<td>GPT Oss 20B (NavyAI)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>grok-4</code></td>
+<td>Grok 4 (NavyAI)</td>
+<td>256000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>grok-4-fast-non-reasoning</code></td>
+<td>Grok 4 Fast Non Reasoning (NavyAI)</td>
+<td>2000000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>grok-4-fast-reasoning</code></td>
+<td>Grok 4 Fast Reasoning (NavyAI)</td>
+<td>2000000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>grok-4.1-fast-non-reasoning</code></td>
+<td>Grok 4.1 Fast Non Reasoning (NavyAI)</td>
+<td>2000000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>grok-4.1-fast-reasoning</code></td>
+<td>Grok 4.1 Fast Reasoning (NavyAI)</td>
+<td>2000000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>grok-4.20-non-reasoning</code></td>
+<td>Grok 4.20 Non Reasoning (NavyAI)</td>
+<td>2000000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>grok-4.20-reasoning</code></td>
+<td>Grok 4.20 Reasoning (NavyAI)</td>
+<td>2000000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>grok-4.3</code></td>
+<td>Grok 4.3 (NavyAI)</td>
+<td>1000000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>grok-code-fast-1</code></td>
+<td>Grok Code Fast 1 (NavyAI)</td>
+<td>256000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>hermes-4-405b</code></td>
+<td>Hermes 4 405B (NavyAI)</td>
+<td>131072</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>hermes-4-70b</code></td>
+<td>Hermes 4 70B (NavyAI)</td>
+<td>131072</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kimi-k2.6</code></td>
+<td>Kimi K2.6 (NavyAI)</td>
+<td>262144</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>kimi-k2.7-code</code></td>
+<td>Kimi K2.7 Code (NavyAI)</td>
+<td>262144</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>llama-3.1-8b-instruct</code></td>
+<td>Llama 3.1 8B Instruct (NavyAI)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>llama-3.3-70b-instruct</code></td>
+<td>Llama 3.3 70B Instruct (NavyAI)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>magistral-medium-2509</code></td>
+<td>Magistral Medium 2509 (NavyAI)</td>
+<td>-</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>magistral-medium-latest</code></td>
+<td>Magistral Medium Latest (NavyAI)</td>
+<td>-</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>magistral-small-2509</code></td>
+<td>Magistral Small 2509 (NavyAI)</td>
+<td>-</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>magistral-small-latest</code></td>
+<td>Magistral Small Latest (NavyAI)</td>
+<td>-</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>mimo-v2.5</code></td>
+<td>MIMO V2.5 (NavyAI)</td>
+<td>1048576</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>mimo-v2.5-pro</code></td>
+<td>MIMO V2.5 Pro (NavyAI)</td>
+<td>1048576</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>minimax-m2.7</code></td>
+<td>Minimax M2.7 (NavyAI)</td>
+<td>204800</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>minimax-m3</code></td>
+<td>Minimax M3 (NavyAI)</td>
+<td>1048576</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>mistral-large-2512</code></td>
+<td>Mistral Large 2512 (NavyAI)</td>
+<td>262144</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>mistral-large-latest</code></td>
+<td>Mistral Large Latest (NavyAI)</td>
+<td>262144</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>mistral-medium-2508</code></td>
+<td>Mistral Medium 2508 (NavyAI)</td>
+<td>128000</td>
+<td>✅</td>
+<td></td>
+</tr>
+<tr>
+<td><code>mistral-medium-3-5</code></td>
+<td>Mistral Medium 3 5 (NavyAI)</td>
+<td>262144</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>mistral-medium-latest</code></td>
+<td>Mistral Medium Latest (NavyAI)</td>
+<td>128000</td>
+<td>✅</td>
+<td></td>
+</tr>
+<tr>
+<td><code>mistral-small-2603</code></td>
+<td>Mistral Small 2603 (NavyAI)</td>
+<td>262144</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>mistral-small-latest</code></td>
+<td>Mistral Small Latest (NavyAI)</td>
+<td>262144</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>nemotron-3-super</code></td>
+<td>Nemotron 3 Super (NavyAI)</td>
+<td>1000000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>o3</code></td>
+<td>O3 (NavyAI)</td>
+<td>200000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>o3-mini</code></td>
+<td>O3 Mini (NavyAI)</td>
+<td>200000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>o4-mini</code></td>
+<td>O4 Mini (NavyAI)</td>
+<td>200000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>qwen3.5-397b-a17b</code></td>
+<td>Qwen3.5 397B A17b (NavyAI)</td>
+<td>262144</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>sonar</code></td>
+<td>Sonar (NavyAI)</td>
+<td>127072</td>
+<td>✅</td>
+<td></td>
+</tr>
+<tr>
+<td><code>sonar-deep-research</code></td>
+<td>Sonar Deep Research (NavyAI)</td>
+<td>128000</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>sonar-pro</code></td>
+<td>Sonar Pro (NavyAI)</td>
+<td>200000</td>
+<td>✅</td>
+<td></td>
+</tr>
+<tr>
+<td><code>sonar-reasoning-pro</code></td>
+<td>Sonar Reasoning Pro (NavyAI)</td>
+<td>128000</td>
+<td>✅</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="ovh-ai-endpoints-ovh-13">OVH AI Endpoints (ovh) — 13 个模型</h3>
+<table>
+<thead>
+<tr>
+<th>模型 ID</th>
+<th>显示名</th>
+<th>上下文窗口</th>
+<th>视觉</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Meta-Llama-3_3-70B-Instruct</code></td>
+<td>Llama 3.3 70B (OVH)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>Mistral-7B-Instruct-v0.3</code></td>
+<td>Mistral 7B Instruct v0.3 (OVH)</td>
+<td>65536</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>Mistral-Nemo-Instruct-2407</code></td>
+<td>Mistral Nemo (OVH)</td>
+<td>128000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>Mistral-Small-3.2-24B-Instruct-2506</code></td>
+<td>Mistral Small 3.2 24B (OVH)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>Qwen2.5-VL-72B-Instruct</code></td>
+<td>Qwen2.5 VL 72B (OVH)</td>
+<td>32768</td>
+<td>✅</td>
+<td></td>
+</tr>
+<tr>
+<td><code>Qwen3-32B</code></td>
+<td>Qwen3 32B (OVH)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>Qwen3-Coder-30B-A3B-Instruct</code></td>
+<td>Qwen3-Coder 30B (OVH)</td>
+<td>262144</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>Qwen3.5-397B-A17B</code></td>
+<td>Qwen3.5 397B (OVH)</td>
+<td>262144</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>Qwen3.6-27B</code></td>
+<td>Qwen3.6 27B (OVH)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>Qwen3Guard-Gen-0.6B</code></td>
+<td>Qwen3Guard Gen 0.6B (OVH safety)</td>
+<td>32768</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>Qwen3Guard-Gen-8B</code></td>
+<td>Qwen3Guard Gen 8B (OVH safety)</td>
+<td>32768</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>gpt-oss-120b</code></td>
+<td>GPT-OSS 120B (OVH)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>gpt-oss-20b</code></td>
+<td>GPT-OSS 20B (OVH)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h3 id="reka-reka-2">Reka (reka) — 2 个模型</h3>
+<table>
+<thead>
+<tr>
+<th>模型 ID</th>
+<th>显示名</th>
+<th>上下文窗口</th>
+<th>视觉</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>reka-edge-2603</code></td>
+<td>Reka Edge</td>
+<td>16384</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>reka-flash</code></td>
+<td>Reka Flash</td>
+<td>65536</td>
+<td></td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h3 id="requesty-requesty-7">Requesty (requesty) — 7 个模型</h3>
+<table>
+<thead>
+<tr>
+<th>模型 ID</th>
+<th>显示名</th>
+<th>上下文窗口</th>
+<th>视觉</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>google/gemma-4-31b-it</code></td>
+<td>Gemma 4 31B (Requesty)</td>
+<td>262144</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>mistral/leanstral-1-5</code></td>
+<td>Leanstral 1.5 (Requesty)</td>
+<td>262144</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>nvidia/nemotron-3-nano-30b-a3b</code></td>
+<td>Nemotron 3 Nano 30B (Requesty)</td>
+<td>262144</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>nvidia/nemotron-3-super-120b-a12b</code></td>
+<td>Nemotron 3 Super 120B (Requesty)</td>
+<td>1048576</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>nvidia/nemotron-3-ultra-550b-a55b</code></td>
+<td>Nemotron 3 Ultra 550B (Requesty)</td>
+<td>1048576</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>nvidia/nemotron-3.5-content-safety</code></td>
+<td>Nemotron 3.5 Content Safety (Requesty)</td>
+<td>131072</td>
+<td>✅</td>
+<td></td>
+</tr>
+<tr>
+<td><code>poolside/laguna-m.1</code></td>
+<td>Poolside Laguna M.1 (Requesty)</td>
+<td>32768</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="routeway-routeway-4">Routeway (routeway) — 4 个模型</h3>
+<table>
+<thead>
+<tr>
+<th>模型 ID</th>
+<th>显示名</th>
+<th>上下文窗口</th>
+<th>视觉</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>llama-3.3-70b-instruct:free</code></td>
+<td>Llama 3.3 70B Instruct (Routeway free)</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>nemotron-3-nano-30b-a3b:free</code></td>
+<td>Nemotron 3 Nano 30B A3B (Routeway free)</td>
+<td>256000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>nemotron-nano-9b-v2:free</code></td>
+<td>Nemotron Nano 9B v2 (Routeway free)</td>
+<td>128000</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>step-3.7-flash:free</code></td>
+<td>StepFun Step 3.7 Flash (Routeway free)</td>
+<td>256000</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sea-lion-sealion-4">SEA-LION (sealion) — 4 个模型</h3>
+<table>
+<thead>
+<tr>
+<th>模型 ID</th>
+<th>显示名</th>
+<th>上下文窗口</th>
+<th>视觉</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>aisingapore/Gemma-SEA-LION-v4-27B-IT</code></td>
+<td>Gemma SEA-LION v4 27B (SEA-LION)</td>
+<td>131072</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>aisingapore/Llama-SEA-LION-v3-70B-IT</code></td>
+<td>Llama SEA-LION v3 70B (SEA-LION)</td>
+<td>131072</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>aisingapore/Qwen-SEA-LION-v4-32B-IT</code></td>
+<td>Qwen SEA-LION v4 32B (SEA-LION)</td>
+<td>32768</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>aisingapore/Qwen-SEA-LION-v4.5-27B-IT</code></td>
+<td>Qwen SEA-LION v4.5 27B (SEA-LION)</td>
+<td>32768</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="zhipu-ai-zhipu-3">Zhipu AI (智谱) (zhipu) — 3 个模型</h3>
+<table>
+<thead>
+<tr>
+<th>模型 ID</th>
+<th>显示名</th>
+<th>上下文窗口</th>
+<th>视觉</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>glm-4.5-flash</code></td>
+<td>GLM-4.5 Flash</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>glm-4.6v-flash</code></td>
+<td>GLM-4.6V Flash</td>
+<td>131072</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>glm-4.7-flash</code></td>
+<td>GLM-4.7 Flash</td>
+<td>131072</td>
+<td></td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h2 id="kai-12-91">四、Kai 已有平台（跳过，共 12 平台 91 模型）</h2>
+<ul>
+<li>Agnes AI (<code>agnes</code>)：1 个模型 — 已支持，未重复添加</li>
+<li>AI Horde (<code>aihorde</code>)：1 个模型 — 已支持，未重复添加</li>
+<li>Cerebras (<code>cerebras</code>)：3 个模型 — 已支持，未重复添加</li>
+<li>OpenAI-Compatible (自定义) (<code>custom</code>)：10 个模型 — 已支持，未重复添加</li>
+<li>Google Gemini (<code>google</code>)：7 个模型 — 已支持，未重复添加</li>
+<li>Groq (<code>groq</code>)：7 个模型 — 已支持，未重复添加</li>
+<li>Hugging Face (<code>huggingface</code>)：13 个模型 — 已支持，未重复添加</li>
+<li>Mistral (<code>mistral</code>)：13 个模型 — 已支持，未重复添加</li>
+<li>NVIDIA NIM (<code>nvidia</code>)：15 个模型 — 已支持，未重复添加</li>
+<li>Ollama Cloud (<code>ollama</code>)：4 个模型 — 已支持，未重复添加</li>
+<li>OpenCode Zen (<code>opencode</code>)：5 个模型 — 已支持，未重复添加</li>
+<li>OpenRouter (<code>openrouter</code>)：12 个模型 — 已支持，未重复添加</li>
+</ul>
+<h2 id="_3">五、去重与一致性验证</h2>
+<ul>
+<li><strong>Service id 唯一</strong>：46 个服务 id 无重复（31 原有 + 15 新增）</li>
+<li><strong>defaultModels 完整</strong>：15 个新平台的全部 171 个模型 id 与 freellmapi catalog 一一对应，无遗漏、无多余</li>
+<li><strong>ModelCatalog 补充</strong>：新增 44 个此前缺失的模型元数据条目（上下文窗口），无 key 冲突</li>
+<li><strong>图标资源</strong>：15 个新服务图标（ic_service_*.xml）全部创建并引用正确</li>
+<li><strong>接入一致性</strong>：端点 URL、Bearer 鉴权、key 格式（Cloudflare <code>account_id:token</code>）、特殊头（Routeway/NavyAI UA）均与 freellmapi 一致</li>
+<li><strong>编译验证</strong>：<code>assembleDebug</code> + <code>compileKotlinDesktop</code> 均 BUILD SUCCESSFUL</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.expand", "search.highlight", "content.tabs.link"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
