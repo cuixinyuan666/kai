@@ -50,7 +50,8 @@ class SettingsViewModelTest {
 
         viewModel.state.test {
             val state = awaitItem()
-            assertTrue(state.configuredServices.isEmpty())
+            // Keyless services are auto-configured on first build; assert no API-key services are present.
+            assertTrue(state.configuredServices.none { it.service.requiresApiKey })
         }
     }
 
@@ -62,11 +63,13 @@ class SettingsViewModelTest {
 
         viewModel.state.test {
             val state = awaitItem()
-            assertEquals(2, state.configuredServices.size)
-            assertEquals(Service.Gemini, state.configuredServices[0].service)
-            assertEquals("gemini", state.configuredServices[0].instanceId)
-            assertEquals(Service.OpenAI, state.configuredServices[1].service)
-            assertEquals("openai", state.configuredServices[1].instanceId)
+            // Ignore the auto-configured keyless services; only the explicitly-added API-key services matter here.
+            val apiKeyServices = state.configuredServices.filter { it.service.requiresApiKey }
+            assertEquals(2, apiKeyServices.size)
+            assertEquals(Service.Gemini, apiKeyServices[0].service)
+            assertEquals("gemini", apiKeyServices[0].instanceId)
+            assertEquals(Service.OpenAI, apiKeyServices[1].service)
+            assertEquals("openai", apiKeyServices[1].instanceId)
         }
     }
 
@@ -76,14 +79,15 @@ class SettingsViewModelTest {
 
         viewModel.state.test {
             val initialState = awaitItem()
-            assertTrue(initialState.configuredServices.isEmpty())
+            assertTrue(initialState.configuredServices.none { it.service.requiresApiKey })
 
             viewModel.actions.onAddService(Service.Groq)
             testDispatcher.scheduler.advanceUntilIdle()
 
             val updatedState = awaitItem()
-            assertEquals(1, updatedState.configuredServices.size)
-            assertEquals(Service.Groq, updatedState.configuredServices[0].service)
+            val apiKeyServices = updatedState.configuredServices.filter { it.service.requiresApiKey }
+            assertEquals(1, apiKeyServices.size)
+            assertEquals(Service.Groq, apiKeyServices[0].service)
             assertEquals("groqcloud", updatedState.expandedServiceId)
 
             cancelAndIgnoreRemainingEvents()
@@ -97,7 +101,7 @@ class SettingsViewModelTest {
 
         viewModel.state.test {
             val initialState = awaitItem()
-            assertEquals(2, initialState.configuredServices.size)
+            assertEquals(2, initialState.configuredServices.count { it.service.requiresApiKey })
 
             // Remove by instanceId (which equals serviceId for first instances)
             viewModel.actions.onRemoveService("gemini")
@@ -107,8 +111,9 @@ class SettingsViewModelTest {
             val updates = cancelAndConsumeRemainingEvents()
             val lastState = updates.filterIsInstance<app.cash.turbine.Event.Item<SettingsUiState>>().lastOrNull()?.value
             requireNotNull(lastState)
-            assertEquals(1, lastState.configuredServices.size)
-            assertEquals(Service.OpenAI, lastState.configuredServices[0].service)
+            val remaining = lastState.configuredServices.filter { it.service.requiresApiKey }
+            assertEquals(1, remaining.size)
+            assertEquals(Service.OpenAI, remaining[0].service)
         }
     }
 
@@ -118,7 +123,7 @@ class SettingsViewModelTest {
         val viewModel = SettingsViewModel(fakeRepository, fakeDaemonController, fakeNotificationPermissionController, noOpScheduler, testDispatcher)
 
         viewModel.state.test {
-            assertEquals(3, awaitItem().configuredServices.size)
+            assertEquals(3, awaitItem().configuredServices.count { it.service.requiresApiKey })
 
             // First remove: Gemini becomes pending.
             viewModel.actions.onRemoveService("gemini")
@@ -136,9 +141,11 @@ class SettingsViewModelTest {
                 .last().value
 
             // Gemini is gone, OpenAI is still pending so its snackbar stays visible.
-            assertEquals(2, afterCommit.configuredServices.size)
-            assertEquals(Service.OpenAI, afterCommit.configuredServices[0].service)
-            assertEquals(Service.Groq, afterCommit.configuredServices[1].service)
+            // Configured services are shown sorted alphabetically by display name (Groq before OpenAI).
+            val afterCommitApiKey = afterCommit.configuredServices.filter { it.service.requiresApiKey }
+            assertEquals(2, afterCommitApiKey.size)
+            assertEquals(Service.Groq, afterCommitApiKey[0].service)
+            assertEquals(Service.OpenAI, afterCommitApiKey[1].service)
             assertEquals(PendingDeletion.Service("openai"), afterCommit.pendingDeletion)
         }
     }
@@ -170,15 +177,17 @@ class SettingsViewModelTest {
             viewModel.actions.onAddService(Service.OpenAI)
             testDispatcher.scheduler.advanceUntilIdle()
             val afterFirst = awaitItem()
-            assertEquals(1, afterFirst.configuredServices.size)
-            assertEquals("openai", afterFirst.configuredServices[0].instanceId)
+            val afterFirstApiKey = afterFirst.configuredServices.filter { it.service.requiresApiKey }
+            assertEquals(1, afterFirstApiKey.size)
+            assertEquals("openai", afterFirstApiKey[0].instanceId)
 
             viewModel.actions.onAddService(Service.OpenAI)
             testDispatcher.scheduler.advanceUntilIdle()
             val afterSecond = awaitItem()
-            assertEquals(2, afterSecond.configuredServices.size)
-            assertEquals("openai", afterSecond.configuredServices[0].instanceId)
-            assertEquals("openai_2", afterSecond.configuredServices[1].instanceId)
+            val afterSecondApiKey = afterSecond.configuredServices.filter { it.service.requiresApiKey }
+            assertEquals(2, afterSecondApiKey.size)
+            assertEquals("openai", afterSecondApiKey[0].instanceId)
+            assertEquals("openai_2", afterSecondApiKey[1].instanceId)
 
             cancelAndIgnoreRemainingEvents()
         }
@@ -304,7 +313,7 @@ class SettingsViewModelTest {
             viewModel.actions.onChangeApiKey("groqcloud", "new-api-key")
 
             val updatedState = awaitItem()
-            assertEquals("new-api-key", updatedState.configuredServices[0].apiKey)
+            assertEquals("new-api-key", updatedState.configuredServices.first { it.instanceId == "groqcloud" }.apiKey)
 
             cancelAndIgnoreRemainingEvents()
         }
@@ -316,15 +325,16 @@ class SettingsViewModelTest {
 
         viewModel.state.test {
             val initialState = awaitItem()
-            assertTrue(initialState.configuredServices.isEmpty())
+            assertTrue(initialState.configuredServices.none { it.service.requiresApiKey })
 
             viewModel.actions.onAddService(Service.Anthropic)
             testDispatcher.scheduler.advanceUntilIdle()
 
             val updatedState = awaitItem()
-            assertEquals(1, updatedState.configuredServices.size)
-            assertEquals(Service.Anthropic, updatedState.configuredServices[0].service)
-            assertEquals("anthropic", updatedState.configuredServices[0].instanceId)
+            val apiKeyServices = updatedState.configuredServices.filter { it.service.requiresApiKey }
+            assertEquals(1, apiKeyServices.size)
+            assertEquals(Service.Anthropic, apiKeyServices[0].service)
+            assertEquals("anthropic", apiKeyServices[0].instanceId)
 
             // Models should be empty until API key is validated and models are fetched
             val models = fakeRepository.getInstanceModels("anthropic", Service.Anthropic).value

@@ -5,6 +5,7 @@ import com.inspiredandroid.kai.data.ServiceEntry
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlin.concurrent.Volatile
 import kotlin.math.roundToInt
 
 /**
