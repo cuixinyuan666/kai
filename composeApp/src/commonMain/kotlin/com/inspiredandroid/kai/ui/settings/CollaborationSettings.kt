@@ -521,7 +521,9 @@ private fun ScoreCard(
                 var userText by remember(score.userScore) { mutableStateOf(score.userScore?.toString() ?: "") }
                 Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Text(labelResolver.label(ref), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    Text("分析分：${score.analysisScore}　最终分：${"%.1f".format(score.finalScore)}", style = MaterialTheme.typography.bodySmall)
+                    // String.format 在 wasmJs 上不可用；手动保留一位小数（finalScore 非负）。
+                    val finalScoreText = (score.finalScore * 10).roundToInt().let { "${it / 10}.${it % 10}" }
+                    Text("分析分：${score.analysisScore}　最终分：$finalScoreText", style = MaterialTheme.typography.bodySmall)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("你的打分", style = MaterialTheme.typography.labelSmall)
                         OutlinedTextField(
