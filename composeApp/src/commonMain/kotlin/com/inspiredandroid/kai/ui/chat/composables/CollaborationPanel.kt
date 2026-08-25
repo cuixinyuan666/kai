@@ -7,13 +7,13 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,13 +27,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,11 +45,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.inspiredandroid.kai.data.collaboration.CollaborationEvent
 import com.inspiredandroid.kai.data.collaboration.CollaborationPhase
+import com.inspiredandroid.kai.data.collaboration.CollaborationRoleKind
 import com.inspiredandroid.kai.ui.chat.ChatUiState
 import com.inspiredandroid.kai.ui.handCursor
 
+/** 协作面板视图模式：总览或按角色过滤。 */
+private enum class CollaborationViewTab(val label: String, val roleKind: CollaborationRoleKind?) {
+    OVERVIEW("总览", null),
+    TASK("任务方", CollaborationRoleKind.TASK),
+    TRANSMIT("传达方", CollaborationRoleKind.TRANSMIT),
+    SUPERVISE("监督方", CollaborationRoleKind.SUPERVISE),
+    FEEDBACK("回传方", CollaborationRoleKind.FEEDBACK),
+}
+
 /**
  * 协作运行面板：以树形图按轮次展示各方执行记录，附带显式提醒、停止按钮与最终汇总。
+ * 支持按角色切换独立视图，各视图同步展示完整聊天记录与对应角色的执行记录。
  * 在聊天栏输入区上方显示，仅在协作模式或存在协作事件时出现。
  */
 @Composable
@@ -56,6 +70,11 @@ internal fun CollaborationPanel(uiState: ChatUiState) {
     if (!show) return
 
     val actions = uiState.actions
+    var selectedTab by remember { mutableStateOf(CollaborationViewTab.OVERVIEW) }
+    val filteredEvents = remember(uiState.collaborationEvents, selectedTab) {
+        filterEventsForTab(uiState.collaborationEvents, selectedTab)
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
@@ -68,6 +87,21 @@ internal fun CollaborationPanel(uiState: ChatUiState) {
                 }
             }
 
+            // 角色独立视图切换
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                CollaborationViewTab.entries.forEach { tab ->
+                    FilterChip(
+                        selected = selectedTab == tab,
+                        onClick = { selectedTab = tab },
+                        label = { Text(tab.label) },
+                        modifier = Modifier.handCursor(),
+                    )
+                }
+            }
+
             uiState.collaborationNotification?.let { note ->
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                     Row(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -77,8 +111,27 @@ internal fun CollaborationPanel(uiState: ChatUiState) {
                 }
             }
 
-            if (uiState.collaborationEvents.isNotEmpty()) {
-                CollaborationTreeView(events = uiState.collaborationEvents)
+            // 各角色独立视图与总览均展示用户原始提问（完整聊天记录的一部分）
+            uiState.collaborationQuestion?.let { question ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                ) {
+                    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("用户提问", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        Text(question, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+
+            if (filteredEvents.isNotEmpty()) {
+                CollaborationTreeView(events = filteredEvents, viewLabel = selectedTab.label)
+            } else if (uiState.collaborationEvents.isNotEmpty()) {
+                Text(
+                    "当前角色暂无执行记录。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             uiState.collaborationSummary?.let { summary ->
@@ -89,12 +142,27 @@ internal fun CollaborationPanel(uiState: ChatUiState) {
     }
 }
 
+private fun filterEventsForTab(events: List<CollaborationEvent>, tab: CollaborationViewTab): List<CollaborationEvent> {
+    val roleKind = tab.roleKind ?: return events
+    return events.filter { event ->
+        val eventRole = event.roleKind ?: event.phase.toRoleKind()
+        eventRole == roleKind
+    }
+}
+
+private fun CollaborationPhase.toRoleKind(): CollaborationRoleKind? = when (this) {
+    CollaborationPhase.TASK -> CollaborationRoleKind.TASK
+    CollaborationPhase.TRANSMIT -> CollaborationRoleKind.TRANSMIT
+    CollaborationPhase.SUPERVISE -> CollaborationRoleKind.SUPERVISE
+    CollaborationPhase.FEEDBACK -> CollaborationRoleKind.FEEDBACK
+    else -> null
+}
+
 /**
  * 按轮次分组的树形视图。round==0 的事件（重试/兜底提示）归入当前进行中的轮次。
  */
 @Composable
-private fun CollaborationTreeView(events: List<CollaborationEvent>) {
-    // 分组：按轮次聚合，round==0 的事件归入最近的有效轮次。转成 Pair 列表便于解构。
+private fun CollaborationTreeView(events: List<CollaborationEvent>, viewLabel: String) {
     val rounds = remember(events) { groupByRound(events).entries.map { it.key to it.value } }
     val expanded = remember { mutableStateMapOf<Int, Boolean>().apply { rounds.forEach { put(it.first, true) } } }
 
@@ -109,6 +177,7 @@ private fun CollaborationTreeView(events: List<CollaborationEvent>) {
                 events = evs,
                 isExpanded = isExpanded,
                 onToggle = { expanded[round] = !isExpanded },
+                viewLabel = viewLabel,
             )
         }
     }
@@ -121,6 +190,7 @@ private fun RoundTreeCard(
     events: List<CollaborationEvent>,
     isExpanded: Boolean,
     onToggle: () -> Unit,
+    viewLabel: String,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -137,13 +207,12 @@ private fun RoundTreeCard(
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    text = "第 $round 轮",
+                    text = "第 $round 轮 · $viewLabel",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f),
                 )
-                // 本轮汇总标签
                 val done = events.lastOrNull { it.phase == CollaborationPhase.DONE }
                 val failed = events.lastOrNull { it.phase == CollaborationPhase.FAILED }
                 when {
@@ -168,7 +237,6 @@ private fun RoundTreeCard(
 @Composable
 private fun TreeNodeRow(event: CollaborationEvent) {
     if (event.isAnswer) {
-        // 各方实际回答：独立可滚动块，避免超长文本撑爆布局。
         Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
             Text(
                 text = event.sourceLabel ?: "回答",
@@ -198,11 +266,10 @@ private fun TreeNodeRow(event: CollaborationEvent) {
         return
     }
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        // 竖线 + 节点圆点
         Box(
             modifier = Modifier
                 .width(16.dp)
-                .height(20.dp),
+                .heightIn(min = 20.dp),
             contentAlignment = Alignment.Center,
         ) {
             Box(
@@ -239,10 +306,6 @@ private fun PhaseBadge(text: String, color: Color) {
     }
 }
 
-/**
- * 把事件按轮次分组。round>0 的事件开启新轮次；round==0 的事件归入最近一轮；
- * 若尚无有效轮次，则归入第 0 轮（准备阶段）。
- */
 private fun groupByRound(events: List<CollaborationEvent>): Map<Int, List<CollaborationEvent>> {
     val result = LinkedHashMap<Int, MutableList<CollaborationEvent>>()
     var current = 0

@@ -468,6 +468,7 @@ class ChatViewModel(
                 collaborationEvents = emptyList(),
                 collaborationSummary = null,
                 collaborationNotification = null,
+                collaborationQuestion = question,
             )
         }
         val orchestrator = CollaborationOrchestrator(
@@ -640,6 +641,7 @@ class ChatViewModel(
                 collaborationSummary = null,
                 isCollaborating = false,
                 collaborationNotification = null,
+                collaborationQuestion = null,
             )
         }
     }

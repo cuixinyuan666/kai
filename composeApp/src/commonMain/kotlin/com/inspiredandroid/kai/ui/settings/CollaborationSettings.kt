@@ -40,6 +40,8 @@ import com.inspiredandroid.kai.data.collaboration.CollaborationConfig
 import com.inspiredandroid.kai.data.collaboration.CollaborationMode
 import com.inspiredandroid.kai.data.collaboration.CollaborationRoleConfig
 import com.inspiredandroid.kai.data.collaboration.DEFAULT_FEEDBACK_PROMPT
+import com.inspiredandroid.kai.data.collaboration.DEFAULT_SUPERVISOR_PROMPT
+import com.inspiredandroid.kai.data.collaboration.DEFAULT_TASK_PARTY_PROMPT
 import com.inspiredandroid.kai.data.collaboration.DEFAULT_TRANSMITTER_PROMPT
 import com.inspiredandroid.kai.data.collaboration.ModelRef
 import com.inspiredandroid.kai.data.collaboration.ModelScore
@@ -239,11 +241,23 @@ internal fun CollaborationSettings(
             Card(modifier = Modifier.fillMaxWidth(), colors = cardColors()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("提示词（可自定义）", style = MaterialTheme.typography.titleMedium)
+                    Text("任务方提示词", style = MaterialTheme.typography.labelMedium)
+                    PromptField(
+                        value = config.taskPartyPrompt,
+                        placeholder = DEFAULT_TASK_PARTY_PROMPT,
+                        onValueChange = { s -> update { it.copy(taskPartyPrompt = s) } },
+                    )
                     Text("传达方提示词", style = MaterialTheme.typography.labelMedium)
                     PromptField(
                         value = config.transmitterPrompt,
                         placeholder = DEFAULT_TRANSMITTER_PROMPT,
                         onValueChange = { s -> update { it.copy(transmitterPrompt = s) } },
+                    )
+                    Text("监督方提示词", style = MaterialTheme.typography.labelMedium)
+                    PromptField(
+                        value = config.supervisorPrompt,
+                        placeholder = DEFAULT_SUPERVISOR_PROMPT,
+                        onValueChange = { s -> update { it.copy(supervisorPrompt = s) } },
                     )
                     Text("回传方提示词", style = MaterialTheme.typography.labelMedium)
                     PromptField(

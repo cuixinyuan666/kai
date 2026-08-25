@@ -103,6 +103,8 @@ data class ChatUiState(
     val collaborationEvents: List<CollaborationEvent> = emptyList(),
     val collaborationSummary: String? = null,
     val collaborationNotification: String? = null,
+    /** 当前协作任务的用户原始提问，供各角色独立视图展示完整聊天记录。 */
+    val collaborationQuestion: String? = null,
 ) {
     val heartbeatConversationId: String?
         get() = savedConversations.firstOrNull { it.isHeartbeat }?.id

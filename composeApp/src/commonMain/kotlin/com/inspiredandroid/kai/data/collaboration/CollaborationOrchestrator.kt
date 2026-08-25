@@ -109,7 +109,7 @@ class CollaborationOrchestrator(
                         val result = callWithRetry(
                             ref = ref,
                             prompt = taskPrompt,
-                            systemPrompt = null,
+                            systemPrompt = config.taskPartyPrompt,
                             retryCount = config.retryCount,
                             failoverToIdle = false,
                             idleModels = idleModels,
@@ -131,7 +131,16 @@ class CollaborationOrchestrator(
                     analysisScores[ref] = (analysisScores[ref] ?: 0.0) + scoreResponse(result, adequate = true)
                     listener.onEvent(CollaborationEvent(round, CollaborationPhase.TASK, "${label} 执行完成（${result.length} 字）。", label))
                     // 展示该任务方的实际回答正文（仅 UI 展示，不回传给其它模型）。
-                    listener.onEvent(CollaborationEvent(round, CollaborationPhase.TASK, result, "$label 的回答", isAnswer = true))
+                    listener.onEvent(
+                        CollaborationEvent(
+                            round,
+                            CollaborationPhase.TASK,
+                            result,
+                            "$label 的回答",
+                            isAnswer = true,
+                            roleKind = CollaborationRoleKind.TASK,
+                        ),
+                    )
                 } else {
                     listener.onEvent(CollaborationEvent(round, CollaborationPhase.TASK, "${label} 执行失败且重试耗尽。", label))
                 }
@@ -157,17 +166,16 @@ class CollaborationOrchestrator(
             // 3) 传达方汇总精简
             listener.onEvent(CollaborationEvent(round, CollaborationPhase.TRANSMIT, "传达方汇总精简中…", transmitterLabel))
             val transmitterPrompt = buildString {
-                append(config.transmitterPrompt)
-                append("\n\n原始问题：\n")
+                append("【原始问题】\n")
                 append(question)
-                append("\n\n各任务方执行结果：\n")
+                append("\n\n【各任务方执行结果】\n")
                 append(combined)
-                append("\n\n【长度与核心任务约束】你的核心任务是【内容精简】：在保留关键结论、关键数据与差异点的前提下压缩篇幅，不得扩充。你的输出（不含“若没有问题，请回复\"确认\"；若有问题，请给出你的补充或纠正。”这一句）不得超过 ${config.maxOutputChars} 字。")
+                append("\n\n【长度与核心任务约束】你的核心任务是【内容精简】：在保留关键结论、关键数据与差异点的前提下压缩篇幅，不得扩充。你的输出不得超过 ${config.maxOutputChars} 字。")
             }
             val transmitSummary = callWithRetry(
                 ref = roles.transmitter!!,
                 prompt = transmitterPrompt,
-                systemPrompt = null,
+                systemPrompt = config.transmitterPrompt,
                 retryCount = config.retryCount,
                 failoverToIdle = true,
                 idleModels = idleModels,
@@ -183,17 +191,28 @@ class CollaborationOrchestrator(
                 break
             }
             listener.onEvent(CollaborationEvent(round, CollaborationPhase.TRANSMIT, "传达方汇总完成（${transmitSummary.length} 字）。", transmitterLabel))
+            listener.onEvent(
+                CollaborationEvent(
+                    round,
+                    CollaborationPhase.TRANSMIT,
+                    transmitSummary,
+                    "$transmitterLabel 的汇总",
+                    isAnswer = true,
+                    roleKind = CollaborationRoleKind.TRANSMIT,
+                ),
+            )
 
             // 4) 监督方评估：统一并行发放，所有监督方同时收到传达方汇总并独立评估。
             listener.onEvent(CollaborationEvent(round, CollaborationPhase.SUPERVISE, "分发到 ${supervisorLabels.size} 个监督方评估…"))
+            val supervisorUserPrompt = buildSupervisorUserPrompt(question, transmitSummary)
             val supervisorOutcomes = coroutineScope {
                 roles.supervisors.mapIndexed { sIdx, ref ->
                     async {
                         val slabel = supervisorLabels[sIdx]
                         val reply = callWithRetry(
                             ref = ref,
-                            prompt = transmitSummary,
-                            systemPrompt = null,
+                            prompt = supervisorUserPrompt,
+                            systemPrompt = config.supervisorPrompt,
                             retryCount = config.retryCount,
                             failoverToIdle = false,
                             idleModels = idleModels,
@@ -213,6 +232,16 @@ class CollaborationOrchestrator(
                 if (reply != null) {
                     analysisScores[ref] = (analysisScores[ref] ?: 0.0) + scoreResponse(reply, adequate = true)
                     listener.onEvent(CollaborationEvent(round, CollaborationPhase.SUPERVISE, "$slabel 评估完成（${reply.length} 字）。", slabel))
+                    listener.onEvent(
+                        CollaborationEvent(
+                            round,
+                            CollaborationPhase.SUPERVISE,
+                            reply,
+                            "$slabel 的评估",
+                            isAnswer = true,
+                            roleKind = CollaborationRoleKind.SUPERVISE,
+                        ),
+                    )
                 } else {
                     listener.onEvent(CollaborationEvent(round, CollaborationPhase.SUPERVISE, "$slabel 评估失败且重试耗尽。", slabel))
                 }
@@ -230,17 +259,16 @@ class CollaborationOrchestrator(
             // 5) 回传方汇总分发
             listener.onEvent(CollaborationEvent(round, CollaborationPhase.FEEDBACK, "回传方汇总监督方回复并分发…", feedbackLabel))
             val feedbackPrompt = buildString {
-                append(config.feedbackPrompt)
-                append("\n\n各监督方回复如下：\n")
+                append("【各监督方回复如下】\n")
                 supervisorLabels.forEachIndexed { sIdx, slabel ->
                     append("$slabel 的回复：\n${supervisorReplies[sIdx] ?: "（失败）"}\n\n")
                 }
-                append("\n\n【长度与核心任务约束】你的核心任务是【内容精简】：汇总时压缩篇幅、保留关键信息与分歧点，不得扩充。你的输出不得超过 ${config.maxOutputChars} 字。")
+                append("\n【长度与核心任务约束】你的核心任务是【内容精简】：汇总时压缩篇幅、保留关键信息与分歧点，不得扩充。你的输出不得超过 ${config.maxOutputChars} 字。")
             }
             val feedbackSummary = callWithRetry(
                 ref = roles.feedback!!,
                 prompt = feedbackPrompt,
-                systemPrompt = null,
+                systemPrompt = config.feedbackPrompt,
                 retryCount = config.retryCount,
                 failoverToIdle = true,
                 idleModels = idleModels,
@@ -256,11 +284,21 @@ class CollaborationOrchestrator(
                 break
             }
             listener.onEvent(CollaborationEvent(round, CollaborationPhase.FEEDBACK, "回传方分发完成（${feedbackSummary.length} 字）。", feedbackLabel))
+            listener.onEvent(
+                CollaborationEvent(
+                    round,
+                    CollaborationPhase.FEEDBACK,
+                    feedbackSummary,
+                    "$feedbackLabel 的分发汇总",
+                    isAnswer = true,
+                    roleKind = CollaborationRoleKind.FEEDBACK,
+                ),
+            )
             lastSummary = feedbackSummary
 
             // 从回传方汇总中提取各任务方对应的反馈段落，作为下一轮任务方上下文。
             lastFeedbackPerTask = (0 until taskLabels.size).associateWith { tIdx ->
-                extractTaskPartySegment(feedbackSummary, tIdx + 1) ?: feedbackSummary
+                extractFeedbackForTaskParty(feedbackSummary, tIdx + 1) ?: feedbackSummary
             }
             // 显式记录"已下发到各任务方"的事件，避免用户误以为回传方结果未分发。
             listener.onEvent(
@@ -276,7 +314,7 @@ class CollaborationOrchestrator(
             val perTaskConfirmed = (0 until taskLabels.size).map { tIdx ->
                 succeededSupervisors.all { reply ->
                     val seg = extractTaskPartySegment(reply, tIdx + 1) ?: reply
-                    isConfirmReply(seg)
+                    isConfirmReply(extractSupervisorVerdict(seg))
                 }
             }
             allConfirmed = perTaskConfirmed.all { it }
@@ -315,6 +353,13 @@ class CollaborationOrchestrator(
             )
         }
         listener.onFinished(lastSummary.ifEmpty { "协作结束，但各轮均未产生有效回传结果。" }, allConfirmed)
+    }
+
+    private fun buildSupervisorUserPrompt(question: String, transmitSummary: String): String = buildString {
+        append("【原始问题】\n")
+        append(question)
+        append("\n\n【传达方汇总】\n")
+        append(transmitSummary)
     }
 
     /**
@@ -492,14 +537,5 @@ class CollaborationOrchestrator(
             len <= 4000 -> 90.0
             else -> 75.0
         }
-    }
-
-    /**
-     * 从监督方回复中提取针对第 taskPartyIndex（从 1 开始）任务方的段落。
-     * 监督方格式：对任务方1的回复：…\n对任务方2的回复：…
-     */
-    private fun extractTaskPartySegment(reply: String, taskPartyIndex: Int): String? {
-        val regex = Regex("对任务方$taskPartyIndex[的的]?回复[:：]\\s*(.*?)(?=对任务方\\d|$)", RegexOption.DOT_MATCHES_ALL)
-        return regex.find(reply)?.groupValues?.getOrNull(1)?.trim()
     }
 }
