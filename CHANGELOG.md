@@ -1,3 +1,9 @@
+## v3.1.1 — 2026-08-25
+
+### Fixes
+- Pin Gradle wrapper to 9.6.1 so Compose Desktop ProGuard release builds succeed (Gradle 9.7 broke `proguardReleaseJars`)
+- GitHub Release workflow: fall back to unsigned APK when signing secrets are not configured; do not fail the pipeline on Play Store upload errors
+
 ## v3.1.0 — 2026-08-25
 
 ### Features
