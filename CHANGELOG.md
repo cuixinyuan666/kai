@@ -1,3 +1,12 @@
+## v3.1.0 — 2026-08-25
+
+### Features
+- Collaboration mode: per-role views (task party, transmitter, supervisor, feedback) with full chat visibility
+- Collaboration mode: dedicated prompts for all four roles and improved output extraction
+
+### Improvements
+- Collaboration orchestrator emits full answer blocks for transmitter, supervisor, and feedback roles
+
 ## v3.0.0 — 2026-08-02
 
 ### Features
