@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build (e.g. v3.2.0)'
+        required: true
+        default: 'v3.2.0'
 
 permissions:
   contents: write
@@ -16,7 +22,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
       - name: Setup JDK
         uses: actions/setup-java@v4
@@ -61,7 +67,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
       - name: Setup JDK
         uses: actions/setup-java@v4
@@ -85,7 +91,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
       - name: Setup JDK
         uses: actions/setup-java@v4
@@ -107,7 +113,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
       - name: Setup JDK
         uses: actions/setup-java@v4
@@ -119,7 +125,7 @@ jobs:
       - name: Create zip archive
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}".TrimStart('v')
+          $version = "${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}".TrimStart('v')
           $source = "composeApp/build/compose/binaries/main-release/app/Kai"
           $dest = "Kai-${version}-windows.zip"
           Compress-Archive -Path "$source/*" -DestinationPath $dest -Force
@@ -136,7 +142,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
       - name: Setup JDK
         uses: actions/setup-java@v4
@@ -160,7 +166,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
       - name: Setup JDK
         uses: actions/setup-java@v4
@@ -186,7 +192,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
       - name: Setup JDK
         uses: actions/setup-java@v4
@@ -214,7 +220,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
       - name: Setup JDK
         uses: actions/setup-java@v4
@@ -285,7 +291,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
       - name: Download Linux Tarball
         uses: actions/download-artifact@v4.1.7
@@ -325,7 +331,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
       - name: Setup JDK
         uses: actions/setup-java@v4
@@ -358,11 +364,13 @@ jobs:
     name: Release APK, DMG, MSI, Windows Zip, DEB, RPM, AppImage, Flatpak and Tarball
     needs: [apk, dmg, msi, windows-zip, deb, rpm, appimage, linux-tar, flatpak]
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
 
       - name: Download APK Artifact
@@ -415,7 +423,7 @@ jobs:
 
       - name: Rename assets
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
           mv androidApp-foss-release-signed.apk "Kai-${VERSION}-android.apk"
           mv *.dmg "Kai-${VERSION}-macos.dmg"
           mv *.msi "Kai-${VERSION}-windows.msi"
@@ -428,24 +436,25 @@ jobs:
 
       - name: Extract changelog
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
           if [ -f CHANGELOG.md ]; then
             sed -n "/^## v${VERSION}/,/^## v/{ /^## v${VERSION}/d; /^## v/d; p; }" CHANGELOG.md > changelog.txt
           fi
           # Fallback if CHANGELOG.md missing or section empty
           if [ ! -s changelog.txt ]; then
-            PREVIOUS_TAG=$(git tag --sort=-creatordate | grep -v "^${GITHUB_REF_NAME}$" | head -n1)
+            PREVIOUS_TAG=$(git tag --sort=-creatordate | grep -v "^${RELEASE_TAG}$" | head -n1)
             if [ -z "$PREVIOUS_TAG" ]; then
-              git log --pretty=format:"- %s" "${GITHUB_REF_NAME}" > changelog.txt
+              git log --pretty=format:"- %s" "${RELEASE_TAG}" > changelog.txt
             else
-              git log --pretty=format:"- %s" "${PREVIOUS_TAG}..${GITHUB_REF_NAME}" --no-merges > changelog.txt
+              git log --pretty=format:"- %s" "${PREVIOUS_TAG}..${RELEASE_TAG}" --no-merges > changelog.txt
             fi
           fi
 
       - name: Create Github Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Release ${{ github.ref_name }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Release ${{ env.RELEASE_TAG }}
           body_path: changelog.txt
           files: Kai-*
 
