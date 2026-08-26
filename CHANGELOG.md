@@ -1,3 +1,14 @@
+## v3.2.0 — 2026-08-26
+
+### Features
+- Collaboration mode: task parties and supervisors now converse directly (transmitter and feedback roles removed)
+- Each task party × supervisor pair gets an isolated chat session with its own history
+- Fixed relay format for dialogue turns; supervisor termination keywords (`没有问题`, `可以完成`, etc.) auto-end sessions
+
+### Improvements
+- Collaboration panel: per-session tabs instead of per-role views
+- GitHub Release: Windows portable zip alongside MSI; Android APK unchanged
+
 ## v3.1.1 — 2026-08-25
 
 ### Fixes

@@ -15,7 +15,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -38,11 +37,8 @@ import com.inspiredandroid.kai.data.DataRepository
 import com.inspiredandroid.kai.data.ServiceEntry
 import com.inspiredandroid.kai.data.collaboration.CollaborationConfig
 import com.inspiredandroid.kai.data.collaboration.CollaborationMode
-import com.inspiredandroid.kai.data.collaboration.CollaborationRoleConfig
-import com.inspiredandroid.kai.data.collaboration.DEFAULT_FEEDBACK_PROMPT
 import com.inspiredandroid.kai.data.collaboration.DEFAULT_SUPERVISOR_PROMPT
 import com.inspiredandroid.kai.data.collaboration.DEFAULT_TASK_PARTY_PROMPT
-import com.inspiredandroid.kai.data.collaboration.DEFAULT_TRANSMITTER_PROMPT
 import com.inspiredandroid.kai.data.collaboration.ModelRef
 import com.inspiredandroid.kai.data.collaboration.ModelScore
 import com.inspiredandroid.kai.ui.KaiOutlinedTextField
@@ -51,8 +47,7 @@ import kotlin.math.roundToInt
 
 /**
  * 协作模式设置页。
- * 采用树形多级下拉：任务 → 任务方/传达方/监督方/回传方 → 各角色所选模型。
- * 任务方、监督方支持多选（多个模型）；传达方、回传方为单一模型。
+ * 任务方与监督方直接对话，为每个配对生成独立会话。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,62 +64,58 @@ internal fun CollaborationSettings(
 
     val labelResolver = remember(services) { ModelLabelResolver(services) }
 
-    // 注意：SettingsScreen 外层已用 verticalScroll 包裹，这里必须用普通 Column，
-    // 否则 LazyColumn 在无限高度约束下会抛
-    // "Vertically scrollable component was measured with an infinity maximum height constraints" 崩溃。
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-            // 协作角色分配模式：手动选择（原模式） / 分数门槛自动分配
-            Card(modifier = Modifier.fillMaxWidth(), colors = cardColors()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("协作角色分配模式", style = MaterialTheme.typography.titleMedium)
+        Card(modifier = Modifier.fillMaxWidth(), colors = cardColors()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("协作角色分配模式", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "手动选择：自行指定任务方与监督方。分数门槛：仅模型测试总分 ≥ 门槛的模型参与；任务方/监督方按比例自动分配。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.weight(1f).handCursor().clickable { update { it.copy(mode = CollaborationMode.MANUAL) } },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = config.mode == CollaborationMode.MANUAL, onClick = { update { it.copy(mode = CollaborationMode.MANUAL) } })
+                        Text("手动选择")
+                    }
+                    Row(
+                        modifier = Modifier.weight(1f).handCursor().clickable { update { it.copy(mode = CollaborationMode.SCORE_GATED) } },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = config.mode == CollaborationMode.SCORE_GATED, onClick = { update { it.copy(mode = CollaborationMode.SCORE_GATED) } })
+                        Text("分数门槛自动分配")
+                    }
+                }
+                if (config.mode == CollaborationMode.SCORE_GATED) {
+                    NumberField(
+                        label = "参与门槛分数（0-100，默认 70）",
+                        value = config.minScore.toInt().coerceIn(0, 100),
+                        onValueChange = { n -> update { it.copy(minScore = n.toDouble().coerceIn(0.0, 100.0)) } },
+                    )
+                    NumberField(
+                        label = "任务方占比 %（其余为监督方，默认 60）",
+                        value = (config.taskRatio * 100).roundToInt().coerceIn(10, 90),
+                        onValueChange = { n -> update { it.copy(taskRatio = (n / 100.0).coerceIn(0.1, 0.9)) } },
+                    )
                     Text(
-                        "手动选择：自行指定各角色模型（原模式）。分数门槛：仅模型测试总分 ≥ 门槛的模型参与；任务方/监督方按比例自动分配，传达方/回传方保留手动指定（未指定时自动取达标最高分模型）。",
+                        "说明：任务方/监督方将按比例自动从「总分 ≥ 门槛」的模型中分配。每个任务方与每个监督方之间将建立独立对话会话。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Row(
-                            modifier = Modifier.weight(1f).handCursor().clickable { update { it.copy(mode = CollaborationMode.MANUAL) } },
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(selected = config.mode == CollaborationMode.MANUAL, onClick = { update { it.copy(mode = CollaborationMode.MANUAL) } })
-                            Text("手动选择（原模式）")
-                        }
-                        Row(
-                            modifier = Modifier.weight(1f).handCursor().clickable { update { it.copy(mode = CollaborationMode.SCORE_GATED) } },
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(selected = config.mode == CollaborationMode.SCORE_GATED, onClick = { update { it.copy(mode = CollaborationMode.SCORE_GATED) } })
-                            Text("分数门槛自动分配")
-                        }
-                    }
-                    if (config.mode == CollaborationMode.SCORE_GATED) {
-                        NumberField(
-                            label = "参与门槛分数（0-100，默认 70）",
-                            value = config.minScore.toInt().coerceIn(0, 100),
-                            onValueChange = { n -> update { it.copy(minScore = n.toDouble().coerceIn(0.0, 100.0)) } },
-                        )
-                        NumberField(
-                            label = "任务方占比 %（其余为监督方，默认 60）",
-                            value = (config.taskRatio * 100).roundToInt().coerceIn(10, 90),
-                            onValueChange = { n -> update { it.copy(taskRatio = (n / 100.0).coerceIn(0.1, 0.9)) } },
-                        )
-                        Text(
-                            "说明：任务方/监督方将按比例自动从「总分 ≥ 门槛」的模型中分配（未测试过或低于门槛的模型不参与）；传达方/回传方仍可手动指定，留空则自动取达标最高分。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                 }
             }
+        }
 
         if (config.mode == CollaborationMode.MANUAL) {
             RoleCard(
                 title = "任务方（可多选）",
-                subtitle = "负责执行任务，可添加多个大模型",
+                subtitle = "负责作答并与监督方直接对话，可添加多个大模型",
                 selected = config.roles.taskParties,
                 multiSelect = true,
                 labelResolver = labelResolver,
@@ -141,32 +132,10 @@ internal fun CollaborationSettings(
                 onRemove = { ref -> update { it.copy(roles = it.roles.copy(taskParties = it.roles.taskParties - ref)) } },
                 services = services,
             )
-        }
 
-            RoleCard(
-                title = "传达方（单一）",
-                subtitle = "汇总精简各任务方结果，过长则压缩但保留关键信息",
-                selected = listOfNotNull(config.roles.transmitter),
-                multiSelect = false,
-                labelResolver = labelResolver,
-                modelAliases = config.modelAliases,
-                onAliasChange = { ref, text ->
-                    update {
-                        it.copy(
-                            modelAliases = if (text.isBlank()) it.modelAliases - ref.key
-                            else it.modelAliases + (ref.key to text),
-                        )
-                    }
-                },
-                onAdd = { ref -> update { it.copy(roles = it.roles.copy(transmitter = ref)) } },
-                onRemove = { update { it.copy(roles = it.roles.copy(transmitter = null)) } },
-                services = services,
-            )
-
-        if (config.mode == CollaborationMode.MANUAL) {
             RoleCard(
                 title = "监督方（可多选）",
-                subtitle = "对各任务方的方案或结果进行评估，可添加多个大模型",
+                subtitle = "与任务方一对一审阅对话，可添加多个大模型",
                 selected = config.roles.supervisors,
                 multiSelect = true,
                 labelResolver = labelResolver,
@@ -185,103 +154,66 @@ internal fun CollaborationSettings(
             )
         }
 
-            RoleCard(
-                title = "回传方（单一）",
-                subtitle = "汇总所有监督方回复并分发回相应任务方",
-                selected = listOfNotNull(config.roles.feedback),
-                multiSelect = false,
-                labelResolver = labelResolver,
-                modelAliases = config.modelAliases,
-                onAliasChange = { ref, text ->
-                    update {
-                        it.copy(
-                            modelAliases = if (text.isBlank()) it.modelAliases - ref.key
-                            else it.modelAliases + (ref.key to text),
-                        )
-                    }
-                },
-                onAdd = { ref -> update { it.copy(roles = it.roles.copy(feedback = ref)) } },
-                onRemove = { update { it.copy(roles = it.roles.copy(feedback = null)) } },
-                services = services,
-            )
-
-            Card(modifier = Modifier.fillMaxWidth(), colors = cardColors()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("运行参数", style = MaterialTheme.typography.titleMedium)
-                    NumberField(
-                        label = "最大循环轮次",
-                        value = config.maxRounds,
-                        onValueChange = { n -> update { it.copy(maxRounds = n) } },
-                    )
-                    NumberField(
-                        label = "模型失败重试次数",
-                        value = config.retryCount,
-                        onValueChange = { n -> update { it.copy(retryCount = n) } },
-                    )
-                    NumberField(
-                        label = "输出字数上限",
-                        value = config.maxOutputChars,
-                        onValueChange = { n -> update { it.copy(maxOutputChars = n) } },
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("监督方全部确认即停止", modifier = Modifier.weight(1f))
-                        Switch(checked = config.autoStopOnConfirm, onCheckedChange = { update { it.copy(autoStopOnConfirm = !it.autoStopOnConfirm) } })
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("模型失败显式提醒", modifier = Modifier.weight(1f))
-                        Switch(checked = config.notifyOnFailure, onCheckedChange = { update { it.copy(notifyOnFailure = !it.notifyOnFailure) } })
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("任务结束提醒", modifier = Modifier.weight(1f))
-                        Switch(checked = config.notifyOnComplete, onCheckedChange = { update { it.copy(notifyOnComplete = !it.notifyOnComplete) } })
-                    }
+        Card(modifier = Modifier.fillMaxWidth(), colors = cardColors()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("运行参数", style = MaterialTheme.typography.titleMedium)
+                NumberField(
+                    label = "每个会话最大对话轮次",
+                    value = config.maxRounds,
+                    onValueChange = { n -> update { it.copy(maxRounds = n) } },
+                )
+                NumberField(
+                    label = "模型失败重试次数",
+                    value = config.retryCount,
+                    onValueChange = { n -> update { it.copy(retryCount = n) } },
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("监督方结束关键词自动停止会话", modifier = Modifier.weight(1f))
+                    Switch(checked = config.autoStopOnConfirm, onCheckedChange = { update { it.copy(autoStopOnConfirm = !it.autoStopOnConfirm) } })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("模型失败显式提醒", modifier = Modifier.weight(1f))
+                    Switch(checked = config.notifyOnFailure, onCheckedChange = { update { it.copy(notifyOnFailure = !it.notifyOnFailure) } })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("任务结束提醒", modifier = Modifier.weight(1f))
+                    Switch(checked = config.notifyOnComplete, onCheckedChange = { update { it.copy(notifyOnComplete = !it.notifyOnComplete) } })
                 }
             }
+        }
 
-            Card(modifier = Modifier.fillMaxWidth(), colors = cardColors()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("提示词（可自定义）", style = MaterialTheme.typography.titleMedium)
-                    Text("任务方提示词", style = MaterialTheme.typography.labelMedium)
-                    PromptField(
-                        value = config.taskPartyPrompt,
-                        placeholder = DEFAULT_TASK_PARTY_PROMPT,
-                        onValueChange = { s -> update { it.copy(taskPartyPrompt = s) } },
-                    )
-                    Text("传达方提示词", style = MaterialTheme.typography.labelMedium)
-                    PromptField(
-                        value = config.transmitterPrompt,
-                        placeholder = DEFAULT_TRANSMITTER_PROMPT,
-                        onValueChange = { s -> update { it.copy(transmitterPrompt = s) } },
-                    )
-                    Text("监督方提示词", style = MaterialTheme.typography.labelMedium)
-                    PromptField(
-                        value = config.supervisorPrompt,
-                        placeholder = DEFAULT_SUPERVISOR_PROMPT,
-                        onValueChange = { s -> update { it.copy(supervisorPrompt = s) } },
-                    )
-                    Text("回传方提示词", style = MaterialTheme.typography.labelMedium)
-                    PromptField(
-                        value = config.feedbackPrompt,
-                        placeholder = DEFAULT_FEEDBACK_PROMPT,
-                        onValueChange = { s -> update { it.copy(feedbackPrompt = s) } },
-                    )
-                }
+        Card(modifier = Modifier.fillMaxWidth(), colors = cardColors()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("提示词（可自定义）", style = MaterialTheme.typography.titleMedium)
+                Text("任务方提示词", style = MaterialTheme.typography.labelMedium)
+                PromptField(
+                    value = config.taskPartyPrompt,
+                    placeholder = DEFAULT_TASK_PARTY_PROMPT,
+                    onValueChange = { s -> update { it.copy(taskPartyPrompt = s) } },
+                )
+                Text("监督方提示词", style = MaterialTheme.typography.labelMedium)
+                PromptField(
+                    value = config.supervisorPrompt,
+                    placeholder = DEFAULT_SUPERVISOR_PROMPT,
+                    onValueChange = { s -> update { it.copy(supervisorPrompt = s) } },
+                )
             }
+        }
 
-            ScoreCard(
-                scores = config.scores,
-                onUserScoreChange = { ref, score ->
-                    val others = config.scores.filter { it.instanceId != ref.instanceId || it.modelId != ref.modelId }
-                    update { it.copy(scores = others + ModelScore(ref.instanceId, ref.modelId, userScore = score)) }
-                },
-                onWeightChange = { ref, w ->
-                    val existing = config.scores.firstOrNull { it.instanceId == ref.instanceId && it.modelId == ref.modelId }
-                        ?: ModelScore(ref.instanceId, ref.modelId)
-                    val others = config.scores.filter { it.instanceId != ref.instanceId || it.modelId != ref.modelId }
-                    update { it.copy(scores = others + existing.copy(userWeight = w)) }
-                },
-                labelResolver = labelResolver,
-            )
+        ScoreCard(
+            scores = config.scores,
+            onUserScoreChange = { ref, score ->
+                val others = config.scores.filter { it.instanceId != ref.instanceId || it.modelId != ref.modelId }
+                update { it.copy(scores = others + ModelScore(ref.instanceId, ref.modelId, userScore = score)) }
+            },
+            onWeightChange = { ref, w ->
+                val existing = config.scores.firstOrNull { it.instanceId == ref.instanceId && it.modelId == ref.modelId }
+                    ?: ModelScore(ref.instanceId, ref.modelId)
+                val others = config.scores.filter { it.instanceId != ref.instanceId || it.modelId != ref.modelId }
+                update { it.copy(scores = others + existing.copy(userWeight = w)) }
+            },
+            labelResolver = labelResolver,
+        )
     }
 }
 
@@ -324,7 +256,6 @@ private fun RoleCard(
                         )
                         TextButton(onClick = { onRemove(ref) }) { Text("移除") }
                     }
-                    // 自定义显示名（如 opencode-hy3），仅用于 UI，不进入发给大模型的 prompt。
                     val alias = modelAliases[ref.key] ?: ""
                     OutlinedTextField(
                         value = alias,
@@ -370,7 +301,6 @@ private fun ModelPickerSheet(
     onDismiss: () -> Unit,
 ) {
     val expanded = remember { mutableStateMapOf<String, Boolean>().apply { services.forEach { put(it.instanceId, false) } } }
-    // 多选模式下的临时勾选集合（key = "$instanceId::$modelId"）。
     val checked = remember { mutableStateMapOf<String, Boolean>() }
     fun keyOf(ref: ModelRef) = "${ref.instanceId}::${ref.modelId}"
 
@@ -381,7 +311,6 @@ private fun ModelPickerSheet(
                 val checkedCount = checked.values.count { it }
                 TextButton(
                     onClick = {
-                        // 批量提交所有勾选的模型。
                         services.forEach { entry ->
                             entry.modelOptions.forEach { opt ->
                                 val ref = ModelRef(entry.instanceId, opt.id)
@@ -405,7 +334,6 @@ private fun ModelPickerSheet(
             LazyColumn(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
                 items(services) { entry ->
                     Column {
-                        // 服务分组标题行：可展开/折叠；多选模式下带「全选」按钮。
                         Row(
                             modifier = Modifier.fillMaxWidth().clickable {
                                 expanded[entry.instanceId] = !(expanded[entry.instanceId] ?: false)
@@ -522,20 +450,18 @@ private fun ScoreCard(
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("模型评分", style = MaterialTheme.typography.titleMedium)
             Text(
-                "参考 freellmapi 风格自动分析得分；你可自定义打分（足够权重计入最终分）。最终分 = 分析分×(1-权重) + 你的打分×权重。分数高的模型在显示时排在最上方。",
+                "参考 freellmapi 风格自动分析得分；你可自定义打分（足够权重计入最终分）。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (scores.isEmpty()) {
                 Text("暂无评分数据，运行一次协作后将自动生成分析分。", style = MaterialTheme.typography.bodySmall)
             }
-            // 按最终分降序：分数高的在前
             scores.sortedByDescending { it.finalScore }.forEach { score ->
                 val ref = ModelRef(score.instanceId, score.modelId)
                 var userText by remember(score.userScore) { mutableStateOf(score.userScore?.toString() ?: "") }
                 Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Text(labelResolver.label(ref), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    // String.format 在 wasmJs 上不可用；手动保留一位小数（finalScore 非负）。
                     val finalScoreText = (score.finalScore * 10).roundToInt().let { "${it / 10}.${it % 10}" }
                     Text("分析分：${score.analysisScore}　最终分：$finalScoreText", style = MaterialTheme.typography.bodySmall)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -563,7 +489,5 @@ private fun ScoreCard(
     }
 }
 
-// region 小工具
 @Composable
 private fun cardColors() = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
-// endregion

@@ -1,50 +1,33 @@
 package com.inspiredandroid.kai.data.collaboration
 
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class CollaborationExtractorsTest {
 
     @Test
-    fun extractTaskPartySegment_fromSupervisorReply() {
-        val text = """
-            对任务方1的回复：我独立执行后认为方案可行；评估：确认
-            对任务方2的回复：我的方案略有不同；评估：建议补充边界条件说明
-        """.trimIndent()
-        assertEquals("我独立执行后认为方案可行；评估：确认", extractTaskPartySegment(text, 1))
-        assertEquals("我的方案略有不同；评估：建议补充边界条件说明", extractTaskPartySegment(text, 2))
+    fun isSessionTerminationReply_positiveKeywords() {
+        assertTrue(isSessionTerminationReply("没有问题"))
+        assertTrue(isSessionTerminationReply("可以完成"))
+        assertTrue(isSessionTerminationReply("确认，方案可行"))
+        assertTrue(isSessionTerminationReply("没有疑问，可以接受"))
+        assertTrue(isSessionTerminationReply("评估：确认"))
     }
 
     @Test
-    fun extractTaskPartySegment_fromFeedbackReply() {
-        val text = """
-            任务方1：
-            - 监督方A的回复：确认
-            - 监督方B的回复：需要补充测试用例
-
-            任务方2：
-            - 监督方A的回复：确认
-        """.trimIndent()
-        val seg1 = extractFeedbackForTaskParty(text, 1)
-        assertNotNull(seg1)
-        assertTrue(seg1.contains("监督方A"))
-        assertTrue(seg1.contains("监督方B"))
+    fun isSessionTerminationReply_negativeKeywords() {
+        assertFalse(isSessionTerminationReply(""))
+        assertFalse(isSessionTerminationReply("存在问题，需要改进"))
+        assertFalse(isSessionTerminationReply("不确认，需要修改"))
+        assertFalse(isSessionTerminationReply("仍有疑问，请补充"))
     }
 
     @Test
-    fun extractSupervisorVerdict_stripsPreamble() {
-        val segment = "我独立执行后认为可行；评估：确认"
-        assertEquals("确认", extractSupervisorVerdict(segment))
-    }
-
-    @Test
-    fun isConfirmReply_positiveAndNegative() {
-        assertTrue(isConfirmReply("评估：确认"))
-        assertFalse(isConfirmReply("评估：不确认，需要修改"))
-        assertFalse(isConfirmReply("评估：存在问题，需要改进"))
-        assertTrue(isConfirmReply("对任务方1的回复：…；评估：确认"))
+    fun formatRelayMessages() {
+        val q = formatSupervisorQuestionForTask("请说明边界条件")
+        assertTrue(q.contains("针对你的上次回答，监督方提出的问题是：请说明边界条件"))
+        val a = formatTaskAnswerForSupervisor("边界条件如下…")
+        assertTrue(a.contains("针对你的上一次疑问，任务方的回答是：边界条件如下…"))
     }
 }

@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -49,19 +48,10 @@ import com.inspiredandroid.kai.data.collaboration.CollaborationRoleKind
 import com.inspiredandroid.kai.ui.chat.ChatUiState
 import com.inspiredandroid.kai.ui.handCursor
 
-/** 协作面板视图模式：总览或按角色过滤。 */
-private enum class CollaborationViewTab(val label: String, val roleKind: CollaborationRoleKind?) {
-    OVERVIEW("总览", null),
-    TASK("任务方", CollaborationRoleKind.TASK),
-    TRANSMIT("传达方", CollaborationRoleKind.TRANSMIT),
-    SUPERVISE("监督方", CollaborationRoleKind.SUPERVISE),
-    FEEDBACK("回传方", CollaborationRoleKind.FEEDBACK),
-}
+private const val OVERVIEW_TAB_KEY = "__overview__"
 
 /**
- * 协作运行面板：以树形图按轮次展示各方执行记录，附带显式提醒、停止按钮与最终汇总。
- * 支持按角色切换独立视图，各视图同步展示完整聊天记录与对应角色的执行记录。
- * 在聊天栏输入区上方显示，仅在协作模式或存在协作事件时出现。
+ * 协作运行面板：按会话（任务方×监督方）展示隔离的对话记录。
  */
 @Composable
 internal fun CollaborationPanel(uiState: ChatUiState) {
@@ -70,9 +60,22 @@ internal fun CollaborationPanel(uiState: ChatUiState) {
     if (!show) return
 
     val actions = uiState.actions
-    var selectedTab by remember { mutableStateOf(CollaborationViewTab.OVERVIEW) }
+    val sessionKeys = remember(uiState.collaborationEvents) {
+        uiState.collaborationEvents
+            .mapNotNull { it.sessionKey }
+            .distinct()
+            .sortedWith(compareBy({ parseSessionKey(it).first }, { parseSessionKey(it).second }))
+    }
+    val sessionLabels = remember(sessionKeys) {
+        sessionKeys.associateWith { formatSessionTabLabel(it) }
+    }
+    var selectedTab by remember { mutableStateOf(OVERVIEW_TAB_KEY) }
     val filteredEvents = remember(uiState.collaborationEvents, selectedTab) {
-        filterEventsForTab(uiState.collaborationEvents, selectedTab)
+        if (selectedTab == OVERVIEW_TAB_KEY) {
+            uiState.collaborationEvents
+        } else {
+            uiState.collaborationEvents.filter { it.sessionKey == selectedTab || it.sessionKey == null }
+        }
     }
 
     Card(
@@ -87,16 +90,21 @@ internal fun CollaborationPanel(uiState: ChatUiState) {
                 }
             }
 
-            // 角色独立视图切换
             Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                CollaborationViewTab.entries.forEach { tab ->
+                FilterChip(
+                    selected = selectedTab == OVERVIEW_TAB_KEY,
+                    onClick = { selectedTab = OVERVIEW_TAB_KEY },
+                    label = { Text("总览") },
+                    modifier = Modifier.handCursor(),
+                )
+                sessionKeys.forEach { key ->
                     FilterChip(
-                        selected = selectedTab == tab,
-                        onClick = { selectedTab = tab },
-                        label = { Text(tab.label) },
+                        selected = selectedTab == key,
+                        onClick = { selectedTab = key },
+                        label = { Text(sessionLabels[key] ?: key) },
                         modifier = Modifier.handCursor(),
                     )
                 }
@@ -111,7 +119,6 @@ internal fun CollaborationPanel(uiState: ChatUiState) {
                 }
             }
 
-            // 各角色独立视图与总览均展示用户原始提问（完整聊天记录的一部分）
             uiState.collaborationQuestion?.let { question ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -125,42 +132,38 @@ internal fun CollaborationPanel(uiState: ChatUiState) {
             }
 
             if (filteredEvents.isNotEmpty()) {
-                CollaborationTreeView(events = filteredEvents, viewLabel = selectedTab.label)
+                val viewLabel = if (selectedTab == OVERVIEW_TAB_KEY) "总览" else (sessionLabels[selectedTab] ?: selectedTab)
+                CollaborationTreeView(events = filteredEvents, viewLabel = viewLabel)
             } else if (uiState.collaborationEvents.isNotEmpty()) {
                 Text(
-                    "当前角色暂无执行记录。",
+                    "当前会话暂无记录。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
             uiState.collaborationSummary?.let { summary ->
-                Text("最终回传汇总：", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                Text("协作汇总：", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                 Text(summary, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
 }
 
-private fun filterEventsForTab(events: List<CollaborationEvent>, tab: CollaborationViewTab): List<CollaborationEvent> {
-    val roleKind = tab.roleKind ?: return events
-    return events.filter { event ->
-        val eventRole = event.roleKind ?: event.phase.toRoleKind()
-        eventRole == roleKind
-    }
+/** 将 sessionKey（如 task1-supervisor2）格式化为可读标签。 */
+private fun formatSessionTabLabel(sessionKey: String): String {
+    val (taskIdx, supIdx) = parseSessionKey(sessionKey)
+    return "任务方${taskIdx + 1}·监督方${supIdx + 1}"
 }
 
-private fun CollaborationPhase.toRoleKind(): CollaborationRoleKind? = when (this) {
-    CollaborationPhase.TASK -> CollaborationRoleKind.TASK
-    CollaborationPhase.TRANSMIT -> CollaborationRoleKind.TRANSMIT
-    CollaborationPhase.SUPERVISE -> CollaborationRoleKind.SUPERVISE
-    CollaborationPhase.FEEDBACK -> CollaborationRoleKind.FEEDBACK
-    else -> null
+private fun parseSessionKey(sessionKey: String): Pair<Int, Int> {
+    val taskMatch = Regex("task(\\d+)").find(sessionKey)
+    val supMatch = Regex("supervisor(\\d+)").find(sessionKey)
+    val taskIdx = taskMatch?.groupValues?.getOrNull(1)?.toIntOrNull()?.minus(1) ?: 0
+    val supIdx = supMatch?.groupValues?.getOrNull(1)?.toIntOrNull()?.minus(1) ?: 0
+    return taskIdx to supIdx
 }
 
-/**
- * 按轮次分组的树形视图。round==0 的事件（重试/兜底提示）归入当前进行中的轮次。
- */
 @Composable
 private fun CollaborationTreeView(events: List<CollaborationEvent>, viewLabel: String) {
     val rounds = remember(events) { groupByRound(events).entries.map { it.key to it.value } }
@@ -183,7 +186,6 @@ private fun CollaborationTreeView(events: List<CollaborationEvent>, viewLabel: S
     }
 }
 
-/** 一轮的树形卡片：标题可折叠，展开后按阶段顺序列出各角色执行节点。 */
 @Composable
 private fun RoundTreeCard(
     round: Int,
@@ -233,7 +235,6 @@ private fun RoundTreeCard(
     }
 }
 
-/** 树形单行：带角色色块、阶段标签与事件文本，左侧竖线表示层级。 */
 @Composable
 private fun TreeNodeRow(event: CollaborationEvent) {
     if (event.isAnswer) {
@@ -265,6 +266,7 @@ private fun TreeNodeRow(event: CollaborationEvent) {
         }
         return
     }
+    val isSystem = event.roleKind == CollaborationRoleKind.SYSTEM
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Box(
             modifier = Modifier
@@ -276,14 +278,14 @@ private fun TreeNodeRow(event: CollaborationEvent) {
                 modifier = Modifier
                     .size(6.dp)
                     .clip(CircleShape)
-                    .background(phaseColor(event.phase)),
+                    .background(phaseColor(event.phase, isSystem)),
             )
         }
         Text(
-            text = "[${phaseLabel(event.phase)}] ",
+            text = "[${phaseLabel(event.phase, isSystem)}] ",
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
-            color = phaseColor(event.phase),
+            color = phaseColor(event.phase, isSystem),
         )
         Text(
             text = (event.sourceLabel?.let { "$it：" } ?: "") + event.text,
@@ -316,26 +318,26 @@ private fun groupByRound(events: List<CollaborationEvent>): Map<Int, List<Collab
     return result
 }
 
-private fun phaseLabel(phase: CollaborationPhase): String = when (phase) {
-    CollaborationPhase.IDLE -> "待机"
-    CollaborationPhase.DISTRIBUTE -> "分发"
-    CollaborationPhase.TASK -> "任务方"
-    CollaborationPhase.TRANSMIT -> "传达方"
-    CollaborationPhase.SUPERVISE -> "监督方"
-    CollaborationPhase.FEEDBACK -> "回传方"
-    CollaborationPhase.DONE -> "完成"
-    CollaborationPhase.FAILED -> "失败"
-    CollaborationPhase.CANCELLED -> "取消"
+private fun phaseLabel(phase: CollaborationPhase, isSystem: Boolean): String = when {
+    isSystem -> "系统转发"
+    phase == CollaborationPhase.IDLE -> "待机"
+    phase == CollaborationPhase.DISTRIBUTE -> "分发"
+    phase == CollaborationPhase.TASK -> "任务方"
+    phase == CollaborationPhase.SUPERVISE -> "监督方"
+    phase == CollaborationPhase.DIALOGUE -> "对话"
+    phase == CollaborationPhase.DONE -> "完成"
+    phase == CollaborationPhase.FAILED -> "失败"
+    phase == CollaborationPhase.CANCELLED -> "取消"
+    else -> phase.name
 }
 
-private fun phaseColor(phase: CollaborationPhase): Color = when (phase) {
-    CollaborationPhase.IDLE -> Color(0xFF757575)
-    CollaborationPhase.DISTRIBUTE -> Color(0xFF1976D2)
-    CollaborationPhase.TASK -> Color(0xFF1976D2)
-    CollaborationPhase.TRANSMIT -> Color(0xFF7B1FA2)
-    CollaborationPhase.SUPERVISE -> Color(0xFF388E3C)
-    CollaborationPhase.FEEDBACK -> Color(0xFFF57C00)
-    CollaborationPhase.DONE -> Color(0xFF2E7D32)
-    CollaborationPhase.FAILED -> Color(0xFFC62828)
-    CollaborationPhase.CANCELLED -> Color(0xFF616161)
+private fun phaseColor(phase: CollaborationPhase, isSystem: Boolean): Color = when {
+    isSystem -> Color(0xFF6D4C41)
+    phase == CollaborationPhase.TASK -> Color(0xFF1976D2)
+    phase == CollaborationPhase.SUPERVISE -> Color(0xFF388E3C)
+    phase == CollaborationPhase.DIALOGUE -> Color(0xFF7B1FA2)
+    phase == CollaborationPhase.DONE -> Color(0xFF2E7D32)
+    phase == CollaborationPhase.FAILED -> Color(0xFFC62828)
+    phase == CollaborationPhase.CANCELLED -> Color(0xFF616161)
+    else -> Color(0xFF757575)
 }

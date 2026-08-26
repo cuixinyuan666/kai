@@ -100,6 +100,35 @@ jobs:
           name: msi-package
           path: composeApp/build/compose/binaries/main-release/msi/*.msi
 
+  windows-zip:
+    name: Generate Windows Zip
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Build application distribution
+        run: ./gradlew createReleaseDistributable --stacktrace
+      - name: Create zip archive
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $source = "composeApp/build/compose/binaries/main-release/app/Kai"
+          $dest = "Kai-${version}-windows.zip"
+          Compress-Archive -Path "$source/*" -DestinationPath $dest -Force
+      - name: Upload Windows Zip Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip-package
+          path: Kai-*-windows.zip
+
   deb:
     name: Generate DEB
     runs-on: ubuntu-latest
@@ -326,8 +355,8 @@ jobs:
         run: bundle exec fastlane android deploy
 
   release:
-    name: Release APK, DMG, MSI, DEB, RPM, AppImage, Flatpak and Tarball
-    needs: [apk, dmg, msi, deb, rpm, appimage, linux-tar, flatpak]
+    name: Release APK, DMG, MSI, Windows Zip, DEB, RPM, AppImage, Flatpak and Tarball
+    needs: [apk, dmg, msi, windows-zip, deb, rpm, appimage, linux-tar, flatpak]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -350,6 +379,11 @@ jobs:
         uses: actions/download-artifact@v4.1.7
         with:
           name: msi-package
+
+      - name: Download Windows Zip Artifact
+        uses: actions/download-artifact@v4.1.7
+        with:
+          name: windows-zip-package
 
       - name: Download DEB Artifact
         uses: actions/download-artifact@v4.1.7
@@ -385,6 +419,7 @@ jobs:
           mv androidApp-foss-release-signed.apk "Kai-${VERSION}-android.apk"
           mv *.dmg "Kai-${VERSION}-macos.dmg"
           mv *.msi "Kai-${VERSION}-windows.msi"
+          mv *-windows.zip "Kai-${VERSION}-windows.zip"
           mv *.deb "Kai-${VERSION}-linux.deb"
           mv *.rpm "Kai-${VERSION}-linux.rpm"
           mv *.AppImage "Kai-${VERSION}-linux.AppImage"
