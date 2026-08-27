@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.rememberWindowState
 import androidx.navigation.compose.rememberNavController
 import kai.composeapp.generated.resources.Res
@@ -33,7 +34,10 @@ fun main() {
         System.setProperty("sun.java2d.uiScale", "auto")
     }
     application {
-        val windowState = rememberWindowState(size = DpSize(1280.dp, 800.dp))
+        val windowState = rememberWindowState(
+            placement = WindowPlacement.Maximized,
+            size = DpSize(1280.dp, 800.dp),
+        )
         Window(
             onCloseRequest = ::exitApplication,
             state = windowState,

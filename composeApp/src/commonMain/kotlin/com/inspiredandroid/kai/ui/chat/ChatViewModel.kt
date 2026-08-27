@@ -16,7 +16,9 @@ import com.inspiredandroid.kai.data.UiSubmission
 import com.inspiredandroid.kai.data.collaboration.CollaborationEvent
 import com.inspiredandroid.kai.data.collaboration.CollaborationListener
 import com.inspiredandroid.kai.data.collaboration.CollaborationTaskRunner
+import com.inspiredandroid.kai.data.ModelBenchmark
 import com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams
+import com.inspiredandroid.kai.data.collaboration.ModelRef
 import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.getBackgroundDispatcher
 import com.inspiredandroid.kai.network.UiError
@@ -97,10 +99,15 @@ class ChatViewModel(
         closeCollaborationModelView = ::closeCollaborationModelView,
         openHistoryFolder = ::openHistoryFolder,
         closeHistoryFolder = ::closeHistoryFolder,
+        closeHistoryTreeSheet = ::closeHistoryTreeSheet,
         copyConversationBranch = ::copyConversationBranch,
         clearPendingCopyText = ::clearPendingCopyText,
         retryCollaborationModel = ::retryCollaborationModel,
+        retryCollaborationTask = ::retryCollaborationTask,
         setCollaborationModelScore = ::setCollaborationModelScore,
+        navigateCollaborationModel = ::navigateCollaborationModel,
+        optimizePrompt = ::optimizePrompt,
+        clearPendingPromptText = ::clearPendingPromptText,
         resendUserMessage = ::resendUserMessage,
     )
     private val freeModeNames: Map<FreeMode, String> = FreeMode.entries.associateWith { "Free ${it.modelId.replaceFirstChar { c -> c.uppercase() }}" }
@@ -543,15 +550,41 @@ class ChatViewModel(
     }
 
     private fun closeCollaborationModelView() {
-        _state.update { it.copy(collaborationModelViewId = null) }
+        val modelId = _state.value.collaborationModelViewId
+        val taskParentId = dataRepository.savedConversations.value
+            .find { it.id == modelId }
+            ?.parentId
+        _state.update {
+            it.copy(
+                collaborationModelViewId = null,
+                historyTreeParentId = taskParentId ?: it.historyTreeParentId,
+                showHistoryTree = taskParentId != null,
+            )
+        }
     }
 
     private fun openHistoryFolder(folderId: String) {
-        _state.update { it.copy(historyTreeParentId = folderId) }
+        _state.update { it.copy(historyTreeParentId = folderId, showHistoryTree = true) }
     }
 
     private fun closeHistoryFolder() {
-        _state.update { it.copy(historyTreeParentId = null) }
+        val parentId = _state.value.historyTreeParentId ?: return
+        val conversations = dataRepository.savedConversations.value
+        val newParent = when (parentId) {
+            Conversation.FOLDER_SINGLE_MODE_ID,
+            Conversation.FOLDER_COLLABORATION_MODE_ID,
+            -> null
+            else -> conversations.find { it.id == parentId }?.parentId
+        }
+        _state.update { it.copy(historyTreeParentId = newParent) }
+    }
+
+    fun dismissHistoryTree() {
+        _state.update { it.copy(showHistoryTree = false, historyTreeParentId = null) }
+    }
+
+    private fun closeHistoryTreeSheet() {
+        dismissHistoryTree()
     }
 
     private fun copyConversationBranch(conversationId: String, level: Int) {
@@ -588,6 +621,89 @@ class ChatViewModel(
 
     private fun setCollaborationModelScore(conversationId: String, score: Double) {
         dataRepository.setCollaborationModelUserScore(conversationId, score)
+    }
+
+    private fun retryCollaborationTask(taskId: String) {
+        val task = dataRepository.savedConversations.value.find { it.id == taskId } ?: return
+        val meta = task.metadata()
+        val question = meta.collaborationQuestion ?: return
+        val params = CollaborationWizardParams(
+            question = question,
+            minScoreThreshold = meta.minScoreThreshold ?: 0.0,
+            maxWaitSeconds = meta.maxWaitSeconds ?: dataRepository.getCollaborationConfig().maxWaitSeconds,
+            retryCount = meta.retryCount ?: dataRepository.getCollaborationConfig().retryCount,
+            notifyOnFailure = meta.notifyOnFailure ?: true,
+            notifyOnComplete = meta.notifyOnComplete ?: true,
+        )
+        startCollaborationTask(params)
+    }
+
+    private fun navigateCollaborationModel(delta: Int) {
+        val currentId = _state.value.collaborationModelViewId ?: return
+        val conversations = dataRepository.savedConversations.value
+        val current = conversations.find { it.id == currentId } ?: return
+        val siblings = ConversationFolderManager.childrenOf(current.parentId ?: return, conversations)
+            .filter { it.type == Conversation.TYPE_COLLABORATION_MODEL }
+            .sortedBy { it.title.lowercase() }
+        val index = siblings.indexOfFirst { it.id == currentId }
+        if (index < 0) return
+        val nextIndex = index + delta
+        if (nextIndex in siblings.indices) {
+            _state.update { it.copy(collaborationModelViewId = siblings[nextIndex].id) }
+        }
+    }
+
+    private fun optimizePrompt(currentText: String) {
+        if (currentText.isBlank()) return
+        viewModelScope.launch(backgroundDispatcher) {
+            _state.update { it.copy(isOptimizingPrompt = true) }
+            val folderHint = dataRepository.savedConversations.value
+                .flatMap { it.messages }
+                .mapNotNull { msg ->
+                    val match = Regex("""(/[\w/\\.-]+)""").find(msg.content)
+                    match?.groupValues?.getOrNull(1)
+                }
+                .lastOrNull()
+            val scoreMap = dataRepository.getModelBenchmarks().associate { it.modelKey to it.totalScore }
+            val targets = buildList {
+                for (entry in dataRepository.getServiceEntries()) {
+                    val modelIds = entry.modelOptions.map { it.id }.ifEmpty { listOfNotNull(entry.modelId) }
+                    for (modelId in modelIds.distinct()) {
+                        val key = "${entry.serviceId}::$modelId"
+                        add(Triple(entry.instanceId, modelId, scoreMap[key] ?: 0.0))
+                    }
+                }
+            }.sortedByDescending { it.third }
+
+            val system = buildString {
+                append("你是提示词优化助手。请根据用户原始提示词，输出更精准、更适合当前工程上下文的版本。")
+                if (folderHint != null) append(" 工作目录或文件夹上下文：$folderHint")
+                append(" 只输出优化后的提示词正文，不要解释。")
+            }
+            var optimized = currentText
+            for ((instanceId, modelId, _) in targets) {
+                try {
+                    val result = dataRepository.askWithInstanceModel(
+                        instanceId = instanceId,
+                        modelId = modelId,
+                        prompt = currentText,
+                        systemPrompt = system,
+                        timeoutMs = 45_000L,
+                    )
+                    if (result.isNotBlank()) {
+                        optimized = result.trim()
+                        break
+                    }
+                } catch (_: Exception) {
+                    continue
+                }
+            }
+            _state.update { it.copy(isOptimizingPrompt = false, pendingPromptText = optimized) }
+        }
+    }
+
+    private fun clearPendingPromptText() {
+        _state.update { it.copy(pendingPromptText = null) }
     }
     // endregion
 

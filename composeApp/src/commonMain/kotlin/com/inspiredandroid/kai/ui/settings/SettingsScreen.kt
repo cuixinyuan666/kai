@@ -277,12 +277,6 @@ fun SettingsScreenContent(
                                 )
                             }
 
-                            SettingsTab.Collaboration -> {
-                                if (dataRepository != null) {
-                                    CollaborationSettings(dataRepository = dataRepository, services = services)
-                                }
-                            }
-
                             SettingsTab.Integrations -> {
                                 IntegrationsContent()
                             }
@@ -403,7 +397,6 @@ private fun SettingsTabSelector(
                             SettingsTab.General -> stringResource(Res.string.settings_tab_general)
                             SettingsTab.Agent -> stringResource(Res.string.settings_tab_agent)
                             SettingsTab.Services -> stringResource(Res.string.settings_tab_services)
-                            SettingsTab.Collaboration -> stringResource(Res.string.settings_tab_collaboration)
                             SettingsTab.Tools -> stringResource(Res.string.settings_tab_tools)
                             SettingsTab.Sandbox -> stringResource(Res.string.settings_tab_sandbox)
                             SettingsTab.Integrations -> stringResource(Res.string.settings_tab_integrations)

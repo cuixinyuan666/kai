@@ -107,6 +107,19 @@ val LightColorScheme = lightColorScheme(
     onSurface = Color(0xFF000000),
 )
 
+/** 护眼模式：暖色背景、降低对比刺眼感 */
+val EyeCareColorScheme = lightColorScheme(
+    primary = Color(0xFF6B8E23),
+    onPrimary = Color(0xFFFFFFFF),
+    surface = Color(0xFFF0E6D2),
+    background = Color(0xFFF5F0E1),
+    onBackground = Color(0xFF3D3A33),
+    onSurface = Color(0xFF3D3A33),
+    surfaceContainerHigh = Color(0xFFE8DFC8),
+    primaryContainer = Color(0xFFD4E4C4),
+    onPrimaryContainer = Color(0xFF2E4A1E),
+)
+
 @Composable
 fun outlineTextFieldColors() = OutlinedTextFieldDefaults.colors()
 

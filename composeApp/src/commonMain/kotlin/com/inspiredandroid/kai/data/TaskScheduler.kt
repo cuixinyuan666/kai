@@ -160,9 +160,11 @@ class TaskScheduler(
             // own persistent bash session rather than the chat the user happens to
             // be viewing right now.
             val heartbeatConversationId = dataRepository.getOrCreateHeartbeatConversationId()
+            val heartbeatInstance = manager.getConfig().heartbeatInstanceId
+                ?: dataRepository.getServiceEntries().firstOrNull()?.instanceId
             val response = dataRepository.askWithTools(
                 prompt = heartbeatPrompt,
-                instanceId = manager.getConfig().heartbeatInstanceId,
+                instanceId = heartbeatInstance,
                 conversationIdOverride = heartbeatConversationId,
             )
             manager.markHeartbeatExecuted()

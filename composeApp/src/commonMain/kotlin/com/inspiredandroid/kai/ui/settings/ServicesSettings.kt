@@ -155,13 +155,7 @@ import sh.calvin.reorderable.ReorderableColumn
 import kotlin.math.roundToInt
 
 @Composable
-internal fun FreeSettings(
-    showFallbackToggle: Boolean = false,
-    isFreeFallbackEnabled: Boolean = true,
-    onToggleFreeFallback: (Boolean) -> Unit = {},
-    currentSponsors: ImmutableList<SponsorsResponseDto.Sponsor> = persistentListOf(),
-    pastSponsors: ImmutableList<SponsorsResponseDto.Sponsor> = persistentListOf(),
-) {
+internal fun FreeSettings() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = kaiAdaptiveCardColors(),
@@ -169,99 +163,16 @@ internal fun FreeSettings(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = stringResource(Res.string.settings_free_tier_title),
+                text = "APP-FREE",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
-
-            if (showFallbackToggle) {
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onToggleFreeFallback(!isFreeFallbackEnabled) }
-                        .handCursor(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = stringResource(Res.string.settings_free_fallback),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Switch(
-                        checked = isFreeFallbackEnabled,
-                        onCheckedChange = onToggleFreeFallback,
-                    )
-                }
-                Spacer(Modifier.height(6.dp))
-            }
-
             Spacer(Modifier.height(6.dp))
-
             Text(
                 text = stringResource(Res.string.settings_free_tier_description),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-
-            Spacer(Modifier.height(12.dp))
-
-            val uriHandler = LocalUriHandler.current
-            Button(
-                onClick = {
-                    uriHandler.openUri("https://github.com/sponsors/SimonSchubert")
-                },
-                Modifier
-                    .align(CenterHorizontally)
-                    .handCursor(),
-            ) {
-                Icon(Icons.Default.Favorite, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(Res.string.settings_become_sponsor))
-            }
-
-            val allSponsors = remember(currentSponsors, pastSponsors) {
-                val activeUsernames = currentSponsors.map { it.username }.toSet()
-                (currentSponsors + pastSponsors.filter { it.username !in activeUsernames })
-                    .toImmutableList()
-            }
-
-            if (allSponsors.isNotEmpty()) {
-                Spacer(Modifier.height(16.dp))
-                HorizontalDivider(thickness = 0.5.dp)
-                Spacer(Modifier.height(16.dp))
-                SponsorList(
-                    title = stringResource(Res.string.settings_sponsors),
-                    sponsors = allSponsors,
-                )
-            }
-
-            Spacer(Modifier.height(16.dp))
-            HorizontalDivider(thickness = 0.5.dp)
-            Spacer(Modifier.height(16.dp))
-
-            Text(
-                text = stringResource(Res.string.settings_business_partnerships),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = stringResource(Res.string.settings_business_partnerships_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            TextButton(
-                onClick = {
-                    uriHandler.openUri("https://schubert-simon.de")
-                },
-                Modifier
-                    .handCursor(),
-            ) {
-                Text(stringResource(Res.string.settings_contact_sponsorship))
-            }
         }
     }
 }
@@ -409,13 +320,7 @@ internal fun ServicesContent(
 
     // Free tier card (always at bottom)
     Spacer(Modifier.height(16.dp))
-    FreeSettings(
-        showFallbackToggle = entries.isNotEmpty(),
-        isFreeFallbackEnabled = uiState.isFreeFallbackEnabled,
-        onToggleFreeFallback = actions.onToggleFreeFallback,
-        currentSponsors = uiState.currentSponsors,
-        pastSponsors = uiState.pastSponsors,
-    )
+    FreeSettings()
 
     // Add service bottom sheet
     if (showAddServiceSheet) {
@@ -1467,6 +1372,30 @@ private fun ApiKeyField(
 }
 
 @Composable
+private fun BenchmarkRow(bm: ModelBenchmark) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = bm.modelLabel,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = buildString {
+                append(bm.totalScore.roundToInt())
+                if (bm.isUserScore && bm.note != null) append(" · ${bm.note}")
+            },
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = Color(benchmarkScoreColor(bm.totalScore)),
+        )
+    }
+}
+
+@Composable
 private fun ModelBenchmarkCard(
     benchmarks: ImmutableList<ModelBenchmark>,
     isRunning: Boolean,
@@ -1538,6 +1467,7 @@ private fun ModelBenchmarkCard(
                         )
                     }
                     if (benchmarks.isNotEmpty()) {
+                        var sortReverse by remember { mutableStateOf(false) }
                         Spacer(Modifier.height(10.dp))
                         HorizontalDivider(thickness = 0.5.dp)
                         if (done && summary.isNotBlank()) {
@@ -1549,29 +1479,40 @@ private fun ModelBenchmarkCard(
                             )
                             Spacer(Modifier.height(8.dp))
                         }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            TextButton(onClick = { sortReverse = !sortReverse }, modifier = Modifier.handCursor()) {
+                                Text(if (sortReverse) "字母反序" else "字母正序")
+                            }
+                        }
                         Spacer(Modifier.height(6.dp))
+                        val sorted = remember(benchmarks, sortReverse) {
+                            val list = benchmarks.sortedBy { it.modelLabel.lowercase() }
+                            if (sortReverse) list.reversed() else list
+                        }
+                        val zeroScores = sorted.filter { it.totalScore <= 0.0 }
+                        val nonZero = sorted.filter { it.totalScore > 0.0 }
+                        val grouped = nonZero.groupBy { it.serviceId.ifBlank { it.modelLabel.substringBefore('/') } }
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            benchmarks
-                                .sortedByDescending { it.totalScore }
-                                .forEach { bm ->
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = bm.modelLabel,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(
-                                            text = "${bm.totalScore.roundToInt()}",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(benchmarkScoreColor(bm.totalScore)),
-                                        )
-                                    }
-                                }
+                            grouped.forEach { (group, items) ->
+                                Text(
+                                    text = group,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                items.forEach { bm -> BenchmarkRow(bm) }
+                                HorizontalDivider(thickness = 0.5.dp)
+                            }
+                            if (zeroScores.isNotEmpty()) {
+                                Text(
+                                    text = "零分模型",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                zeroScores.forEach { bm -> BenchmarkRow(bm) }
+                            }
                         }
                     }
                 }

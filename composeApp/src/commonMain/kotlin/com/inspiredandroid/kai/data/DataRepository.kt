@@ -120,6 +120,8 @@ interface DataRepository {
     // Theme mode
     fun getThemeMode(): ThemeMode
     fun setThemeMode(mode: ThemeMode)
+    fun getSettingsTab(): String?
+    fun setSettingsTab(tab: String)
 
     // Interactive mode
     fun setInteractiveMode(enabled: Boolean)

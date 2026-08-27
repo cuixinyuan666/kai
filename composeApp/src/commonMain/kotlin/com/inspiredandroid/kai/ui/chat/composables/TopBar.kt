@@ -3,13 +3,16 @@ package com.inspiredandroid.kai.ui.chat.composables
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -20,7 +23,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.ui.chat.ChatActions
 import com.inspiredandroid.kai.ui.components.HoverTooltip
 import com.inspiredandroid.kai.ui.handCursor
@@ -51,28 +56,49 @@ internal fun TopBar(
     isShellExecuting: Boolean,
     onToggleSandbox: () -> Unit,
     onShowHistory: () -> Unit,
+    chatMode: ChatMode = ChatMode.SINGLE,
+    isCollaborating: Boolean = false,
+    onOpenCollaborationWizard: () -> Unit = {},
     navigationTabBar: (@Composable () -> Unit)? = null,
 ) {
+    val collaborationTint = when {
+        isCollaborating || chatMode == ChatMode.COLLABORATION -> Color(0xFF81C784)
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+  val barModifier = Modifier
+        .fillMaxWidth()
+        .background(MaterialTheme.colorScheme.background)
+        .padding(horizontal = 4.dp, vertical = 4.dp)
+
     if (navigationTabBar != null) {
         Box(
-            modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 64.dp),
+            modifier = barModifier.defaultMinSize(minHeight = 64.dp),
         ) {
             Row(modifier = Modifier.align(Alignment.CenterStart)) {
-                LeadingButtons(textToSpeech, isSpeechOutputEnabled, isSpeaking, actions, onShowHistory, isSandboxAvailable, isSandboxOpen, isShellExecuting, onToggleSandbox)
+                LeadingButtons(
+                    textToSpeech, isSpeechOutputEnabled, isSpeaking, actions, onShowHistory,
+                    isSandboxAvailable, isSandboxOpen, isShellExecuting, onToggleSandbox,
+                )
             }
             Box(modifier = Modifier.align(Alignment.Center)) {
                 navigationTabBar()
             }
             Row(modifier = Modifier.align(Alignment.CenterEnd)) {
+                CollaborationModeButton(collaborationTint, onOpenCollaborationWizard)
                 if (textToSpeech != null) {
                     SpeechToggleButton(textToSpeech, isSpeechOutputEnabled, isSpeaking, actions)
                 }
             }
         }
     } else {
-        Row {
-            LeadingButtons(textToSpeech, isSpeechOutputEnabled, isSpeaking, actions, onShowHistory, isSandboxAvailable, isSandboxOpen, isShellExecuting, onToggleSandbox)
+        Row(modifier = barModifier) {
+            LeadingButtons(
+                textToSpeech, isSpeechOutputEnabled, isSpeaking, actions, onShowHistory,
+                isSandboxAvailable, isSandboxOpen, isShellExecuting, onToggleSandbox,
+            )
             Spacer(Modifier.weight(1f))
+            CollaborationModeButton(collaborationTint, onOpenCollaborationWizard)
             if (textToSpeech != null) {
                 SpeechToggleButton(textToSpeech, isSpeechOutputEnabled, isSpeaking, actions)
             }
@@ -91,6 +117,20 @@ internal fun TopBar(
         }
     }
 }
+
+@Composable
+private fun CollaborationModeButton(tint: Color, onClick: () -> Unit) {
+    HoverTooltip("协作模式") {
+        IconButton(onClick = onClick, modifier = Modifier.handCursor()) {
+            Icon(
+                imageVector = Icons.Filled.Groups,
+                contentDescription = "协作模式",
+                tint = tint,
+            )
+        }
+    }
+}
+
 @Composable
 private fun LeadingButtons(
     textToSpeech: TextToSpeechInstance?,
@@ -103,7 +143,6 @@ private fun LeadingButtons(
     isShellExecuting: Boolean,
     onToggleSandbox: () -> Unit,
 ) {
-    // 左上角第一个按钮是"+"（新建聊天），始终可见；聊天记录图标放在其后。
     HoverTooltip("新建聊天") {
         IconButton(
             modifier = Modifier.handCursor(),

@@ -27,6 +27,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.DisableSelection
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SuggestionChip
@@ -104,24 +107,16 @@ fun QuestionInput(
     modelBenchmarks: Map<String, Double> = emptyMap(),
     chatMode: ChatMode = ChatMode.SINGLE,
     onOpenCollaborationWizard: () -> Unit = {},
+    onOptimizePrompt: () -> Unit = {},
+    isOptimizingPrompt: Boolean = false,
+    speechSupported: Boolean = false,
+    isSpeechListening: Boolean = false,
+    onToggleSpeechInput: () -> Unit = {},
     installedSkills: ImmutableList<SkillManifest> = persistentListOf(),
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
-        // 协作模式切换
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            SuggestionChip(
-                modifier = Modifier.handCursor(),
-                onClick = onOpenCollaborationWizard,
-                label = { Text("协作模式") },
-            )
-        }
-        // Slash autocomplete: shown when the user is typing the first token and it starts
+        // Slash autocomplete
         // with `/`. Selecting an entry rewrites the first token to the canonical skill id
         // so the ViewModel can match it at send time.
         if (installedSkills.isNotEmpty()) {
@@ -268,6 +263,18 @@ fun QuestionInput(
                     modifier = Modifier.padding(end = 7.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
+                    if (speechSupported) {
+                        CircleIconButton(
+                            icon = Icons.Default.Mic,
+                            onClick = onToggleSpeechInput,
+                            tint = if (isSpeechListening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+                        )
+                    }
+                    CircleIconButton(
+                        icon = Icons.Default.AutoFixHigh,
+                        onClick = onOptimizePrompt,
+                        tint = if (isOptimizingPrompt) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+                    )
                     if (availableServices.size > 1) {
                         ServiceSelector(
                             services = availableServices,

@@ -149,6 +149,7 @@ private fun ThemeModePicker(
         ThemeMode.Light to stringResource(Res.string.settings_theme_light),
         ThemeMode.Dark to stringResource(Res.string.settings_theme_dark),
         ThemeMode.OledBlack to stringResource(Res.string.settings_theme_oled),
+        ThemeMode.EyeCare to "护眼",
     )
     val selectedLabel = options.first { it.first == themeMode }.second
     var expanded by remember { mutableStateOf(false) }

@@ -39,10 +39,15 @@ data class ChatActions(
     val closeCollaborationModelView: () -> Unit,
     val openHistoryFolder: (String) -> Unit,
     val closeHistoryFolder: () -> Unit,
+    val closeHistoryTreeSheet: () -> Unit,
     val copyConversationBranch: (String, Int) -> Unit,
     val clearPendingCopyText: () -> Unit,
     val retryCollaborationModel: (String) -> Unit,
+    val retryCollaborationTask: (String) -> Unit,
     val setCollaborationModelScore: (String, Double) -> Unit,
+    val navigateCollaborationModel: (Int) -> Unit,
+    val optimizePrompt: (String) -> Unit,
+    val clearPendingPromptText: () -> Unit,
     /** 用户消息“重新发送”：截断到该消息之前，再以原文重新提问。 */
     val resendUserMessage: (messageId: String, text: String) -> Unit,
 )

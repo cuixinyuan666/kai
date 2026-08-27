@@ -504,6 +504,9 @@ private fun ChatModeScreen(
     previewSandboxLines: ImmutableList<TerminalLine> = persistentListOf(),
 ) {
     var showHistorySheet by remember { mutableStateOf(false) }
+    val speechToText = remember { com.inspiredandroid.kai.speech.createSpeechToText() }
+    var isSpeechListening by remember { mutableStateOf(false) }
+    val componentScope = rememberCoroutineScope()
     var isSandboxOpen by rememberSaveable { mutableStateOf(initialSandboxOpen) }
     // Hoisted here so the draft survives toggling the sandbox/terminal view, which
     // removes QuestionInput from composition and would otherwise drop the text.
@@ -517,6 +520,16 @@ private fun ChatModeScreen(
         if (text != null) {
             copyToClipboard(text)
             uiState.actions.clearPendingCopyText()
+        }
+    }
+    LaunchedEffect(uiState.showHistoryTree) {
+        if (uiState.showHistoryTree) showHistorySheet = true
+    }
+    LaunchedEffect(uiState.pendingPromptText) {
+        val text = uiState.pendingPromptText
+        if (text != null) {
+            questionInputText = TextFieldValue(text)
+            uiState.actions.clearPendingPromptText()
         }
     }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -568,6 +581,9 @@ private fun ChatModeScreen(
                     keyboardController?.hide()
                     showHistorySheet = true
                 },
+                chatMode = uiState.chatMode,
+                isCollaborating = uiState.isCollaborating,
+                onOpenCollaborationWizard = uiState.actions.openCollaborationWizard,
                 navigationTabBar = navigationTabBar,
             )
 
@@ -956,6 +972,34 @@ private fun ChatModeScreen(
                     onSelectModel = uiState.actions.selectModel,
                     modelBenchmarks = uiState.modelBenchmarks,
                     onOpenCollaborationWizard = uiState.actions.openCollaborationWizard,
+                    onOptimizePrompt = { uiState.actions.optimizePrompt(questionInputText.text) },
+                    isOptimizingPrompt = uiState.isOptimizingPrompt,
+                    speechSupported = speechToText?.isSupported == true,
+                    isSpeechListening = isSpeechListening,
+                    onToggleSpeechInput = {
+                        val stt = speechToText
+                        if (stt != null) {
+                            componentScope.launch {
+                                if (isSpeechListening) {
+                                    isSpeechListening = false
+                                    stt.stopListening().onSuccess { text ->
+                                        if (text.isNotBlank()) {
+                                            questionInputText = TextFieldValue(
+                                                questionInputText.text + text,
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    isSpeechListening = true
+                                    val lang = if (questionInputText.text.any { it.code > 127 }) "zh" else "en"
+                                    stt.startListening(lang).onFailure {
+                                        isSpeechListening = false
+                                        snackbarHostState.showSnackbar("无法启动语音识别")
+                                    }
+                                }
+                            }
+                        }
+                    },
                     installedSkills = uiState.installedSkills,
                 )
             }
@@ -971,6 +1015,13 @@ private fun ChatModeScreen(
         if (modelViewId != null) {
             val modelConversation = uiState.folderConversations.find { it.id == modelViewId }
             if (modelConversation != null) {
+                val siblings = uiState.folderConversations
+                    .filter {
+                        it.parentId == modelConversation.parentId &&
+                            it.type == com.inspiredandroid.kai.data.Conversation.TYPE_COLLABORATION_MODEL
+                    }
+                    .sortedBy { it.title.lowercase() }
+                val index = siblings.indexOfFirst { it.id == modelViewId }
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -981,6 +1032,10 @@ private fun ChatModeScreen(
                         actions = uiState.actions,
                         isLoading = uiState.isCollaborating,
                         onBack = uiState.actions.closeCollaborationModelView,
+                        hasPrevModel = index > 0,
+                        hasNextModel = index >= 0 && index < siblings.lastIndex,
+                        onPrevModel = { uiState.actions.navigateCollaborationModel(-1) },
+                        onNextModel = { uiState.actions.navigateCollaborationModel(1) },
                     )
                 }
             }
@@ -993,7 +1048,7 @@ private fun ChatModeScreen(
             treeParentId = uiState.historyTreeParentId,
             actions = uiState.actions,
             onDismiss = {
-                uiState.actions.closeHistoryFolder()
+                uiState.actions.closeHistoryTreeSheet()
                 showHistorySheet = false
             },
             onOpenModelView = { id ->

@@ -119,7 +119,7 @@ sealed class Service(
 ) {
     data object Free : Service(
         id = "free",
-        displayName = "Free",
+        displayName = "APP-FREE",
         icon = Res.drawable.ic_service_free_fast,
         requiresApiKey = false,
         defaultModel = null,

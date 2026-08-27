@@ -16,6 +16,9 @@ data class ModelBenchmark(
     val modelKey: String = "",
     val modelLabel: String = "",
     val serviceId: String = "",
+    /** 用户协作打分（不受自动测试覆盖） */
+    val isUserScore: Boolean = false,
+    val note: String? = null,
     /** 0..100 加权总分 */
     val totalScore: Double = 0.0,
     val completion: Double = 0.0,

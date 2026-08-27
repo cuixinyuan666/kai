@@ -56,7 +56,6 @@ enum class SettingsTab {
     General,
     Agent,
     Services,
-    Collaboration,
     Tools,
     Sandbox,
     Integrations,

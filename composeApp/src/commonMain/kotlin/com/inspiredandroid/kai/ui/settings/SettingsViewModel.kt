@@ -97,6 +97,9 @@ class SettingsViewModel(
         // 首次构建前确保免密钥（free-key）服务已写入仓库，避免“已添加却没显示”的空窗。
         ensureKeylessServicesConfigured()
         return SettingsUiState(
+        currentTab = runCatching {
+            SettingsTab.valueOf(dataRepository.getSettingsTab() ?: SettingsTab.Services.name)
+        }.getOrDefault(SettingsTab.Services),
         configuredServices = sortedConfigured(buildConfiguredServiceEntries(), false).toImmutableList(),
         availableServicesToAdd = sortedAvailable(computeAvailableServices(), false).toImmutableList(),
         isDefaultInteractiveMode = dataRepository.isInteractiveModeActive(),
@@ -388,6 +391,7 @@ class SettingsViewModel(
     }
 
     private fun onSelectTab(tab: SettingsTab) {
+        dataRepository.setSettingsTab(tab.name)
         _state.update { it.copy(currentTab = tab) }
     }
 

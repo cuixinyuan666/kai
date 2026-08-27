@@ -5,7 +5,7 @@ import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -36,23 +36,21 @@ fun HoverTooltip(
     }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
+    // 扩大悬停区域至 tooltip 高度，避免鼠标移向提示文字时离开 hover 导致闪烁。
     Box(
-        modifier = modifier,
-        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .defaultMinSize(minHeight = 56.dp)
+            .hoverable(interactionSource = interactionSource),
+        contentAlignment = Alignment.TopCenter,
     ) {
-        Box(
-            modifier = Modifier
-                .zIndex(0f)
-                .hoverable(interactionSource = interactionSource),
-        ) {
+        Box(modifier = Modifier.zIndex(0f)) {
             content()
         }
         if (isHovered) {
             Surface(
                 modifier = Modifier
                     .zIndex(10f)
-                    .offset(y = 34.dp)
-                    .align(Alignment.TopCenter),
+                    .align(Alignment.BottomCenter),
                 shape = RoundedCornerShape(6.dp),
                 color = MaterialTheme.colorScheme.inverseSurface,
                 shadowElevation = 4.dp,

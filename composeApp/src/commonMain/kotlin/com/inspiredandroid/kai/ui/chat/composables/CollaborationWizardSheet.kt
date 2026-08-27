@@ -53,11 +53,11 @@ internal fun CollaborationWizardSheet(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("协作模式向导", style = MaterialTheme.typography.titleLarge)
+            Text("协作模式向导", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
 
             when (step) {
                 0 -> {
-                    Text("请输入要发送给各模型的问题或任务。", style = MaterialTheme.typography.bodyMedium)
+                    Text("请输入要发送给各模型的问题或任务。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     KaiOutlinedTextField(
                         value = question,
                         onValueChange = { question = it },

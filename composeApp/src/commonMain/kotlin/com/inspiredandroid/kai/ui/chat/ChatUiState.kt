@@ -115,6 +115,9 @@ data class ChatUiState(
     val folderConversations: ImmutableList<com.inspiredandroid.kai.data.Conversation> = persistentListOf(),
     val collaborationConfig: CollaborationConfig = CollaborationConfig(),
     val pendingCopyText: String? = null,
+    val showHistoryTree: Boolean = false,
+    val pendingPromptText: String? = null,
+    val isOptimizingPrompt: Boolean = false,
 ) {
     val heartbeatConversationId: String?
         get() = savedConversations.firstOrNull { it.isHeartbeat }?.id

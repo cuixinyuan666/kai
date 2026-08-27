@@ -1887,6 +1887,12 @@ class RemoteDataRepository(
         appSettings.setThemeMode(mode)
     }
 
+    override fun getSettingsTab(): String? = appSettings.getSettingsTab()
+
+    override fun setSettingsTab(tab: String) {
+        appSettings.setSettingsTab(tab)
+    }
+
     private var interactiveModeFlag = appSettings.getCurrentInteractiveMode()
 
     override fun setInteractiveMode(enabled: Boolean) {
@@ -2293,6 +2299,26 @@ class RemoteDataRepository(
         val conversation = savedConversations.value.find { it.id == conversationId } ?: return
         val updated = conversation.withMetadata(conversation.metadata().copy(userScore = score))
         conversationStorage.saveConversation(updated)
+        val meta = conversation.metadata()
+        val instanceId = meta.instanceId
+        val modelId = meta.modelId
+        if (instanceId != null && modelId != null) {
+            val entry = getServiceEntries().find { it.instanceId == instanceId }
+            val serviceId = entry?.serviceId ?: ""
+            val label = entry?.modelOptions?.find { it.id == modelId }?.label ?: modelId
+            upsertModelBenchmark(
+                ModelBenchmark(
+                    modelKey = "$serviceId::$modelId",
+                    modelLabel = label,
+                    serviceId = serviceId,
+                    isUserScore = true,
+                    note = "用户自主打分结果",
+                    totalScore = score,
+                    completion = score,
+                    testedAt = Clock.System.now().toEpochMilliseconds(),
+                ),
+            )
+        }
     }
 
     override suspend fun createCollaborationTask(question: String, params: CollaborationWizardParams): String {

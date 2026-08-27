@@ -17,6 +17,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -25,6 +28,10 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,9 +58,12 @@ internal fun ChatHistoryTreeSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surface,
     ) {
         val rootIds = listOf(Conversation.FOLDER_SINGLE_MODE_ID, Conversation.FOLDER_COLLABORATION_MODE_ID)
         val parentId = treeParentId
+        var sortReverse by remember(parentId) { mutableStateOf(false) }
+
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
@@ -63,7 +73,11 @@ internal fun ChatHistoryTreeSheet(
             ) {
                 if (parentId != null) {
                     IconButton(onClick = { actions.closeHistoryFolder() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
                     }
                 }
                 Text(
@@ -74,8 +88,12 @@ internal fun ChatHistoryTreeSheet(
                         else -> conversations.find { it.id == parentId }?.title ?: "文件夹"
                     },
                     style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(start = 8.dp),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(start = 8.dp).weight(1f),
                 )
+                IconButton(onClick = { sortReverse = !sortReverse }) {
+                    Icon(Icons.Default.Sort, contentDescription = if (sortReverse) "字母正序" else "字母反序")
+                }
                 if (parentId != null) {
                     IconButton(onClick = { onCopy(parentId, if (parentId in rootIds) 1 else 2) }) {
                         Icon(Icons.Default.ContentCopy, contentDescription = "复制")
@@ -83,15 +101,22 @@ internal fun ChatHistoryTreeSheet(
                 }
             }
 
-            val items = when (parentId) {
+            val rawItems = when (parentId) {
                 null -> conversations.filter { it.id in rootIds }
                 else -> ConversationFolderManager.childrenOf(parentId, conversations)
             }
+            val items = remember(rawItems, sortReverse) {
+                val sorted = rawItems.sortedBy { it.title.lowercase() }
+                if (sortReverse) sorted.reversed() else sorted
+            }
+
+            val isCollaborationTaskLevel = parentId == Conversation.FOLDER_COLLABORATION_MODE_ID
 
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
                 items(items, key = { it.id }) { item ->
                     HistoryTreeRow(
                         conversation = item,
+                        showTaskActions = isCollaborationTaskLevel && item.type == Conversation.TYPE_COLLABORATION_TASK,
                         onClick = {
                             when (item.type) {
                                 Conversation.TYPE_FOLDER,
@@ -113,6 +138,8 @@ internal fun ChatHistoryTreeSheet(
                             }
                             onCopy(item.id, level)
                         },
+                        onDelete = { actions.deleteConversation(item.id) },
+                        onRetry = { actions.retryCollaborationTask(item.id) },
                     )
                 }
             }
@@ -123,8 +150,11 @@ internal fun ChatHistoryTreeSheet(
 @Composable
 private fun HistoryTreeRow(
     conversation: Conversation,
+    showTaskActions: Boolean,
     onClick: () -> Unit,
     onCopy: () -> Unit,
+    onDelete: () -> Unit,
+    onRetry: () -> Unit,
 ) {
     val meta = conversation.metadata()
     val status = meta.status?.let { runCatching { CollaborationModelStatus.valueOf(it) }.getOrNull() }
@@ -142,7 +172,7 @@ private fun HistoryTreeRow(
             .handCursor()
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (statusColor != Color.Transparent) {
             Box(
@@ -156,6 +186,7 @@ private fun HistoryTreeRow(
             Text(
                 text = conversation.title,
                 style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -167,6 +198,14 @@ private fun HistoryTreeRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+            }
+        }
+        if (showTaskActions) {
+            IconButton(onClick = onRetry) {
+                Icon(Icons.Default.Refresh, contentDescription = "重试任务", modifier = Modifier.size(20.dp))
+            }
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, contentDescription = "删除", modifier = Modifier.size(20.dp))
             }
         }
         IconButton(onClick = onCopy) {

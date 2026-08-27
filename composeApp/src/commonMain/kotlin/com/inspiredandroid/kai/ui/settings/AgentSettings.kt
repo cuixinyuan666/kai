@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -191,9 +192,14 @@ private fun SoulEditor(
     onSaveSoul: (String) -> Unit,
 ) {
     val localizedDefault = stringResource(Res.string.default_soul)
-    val displayText = soulText.ifEmpty { localizedDefault }
-    var editedText by remember(displayText) { mutableStateOf(displayText) }
-    val hasChanges = editedText != displayText
+    var editedText by remember(soulText) {
+        mutableStateOf(if (soulText.isNotEmpty()) soulText else localizedDefault)
+    }
+    LaunchedEffect(soulText, localizedDefault) {
+        editedText = if (soulText.isNotEmpty()) soulText else localizedDefault
+    }
+    val baseline = if (soulText.isNotEmpty()) soulText else localizedDefault
+    val hasChanges = editedText != baseline
     val maxChars = 4000
 
     var showResetDialog by remember { mutableStateOf(false) }
