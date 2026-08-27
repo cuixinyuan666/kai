@@ -1,3 +1,6 @@
+import java.io.File
+import java.net.URI
+import java.util.zip.ZipInputStream
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -185,6 +188,78 @@ kotlin {
     }
 }
 
+val voskModels =
+    listOf(
+        "vosk-model-small-en-us-0.15" to
+            "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
+        "vosk-model-small-cn-0.22" to
+            "https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip",
+    )
+
+fun isVoskModelReady(dir: File): Boolean =
+    dir.isDirectory &&
+        (
+            File(dir, "am/final.mdl").exists() ||
+                File(dir, "conf/model.conf").exists()
+        )
+
+fun unpackVoskZip(zipFile: File, destDir: File) {
+    ZipInputStream(zipFile.inputStream()).use { zis ->
+        var entry = zis.nextEntry
+        while (entry != null) {
+            val outFile = File(destDir, entry.name)
+            if (entry.isDirectory) {
+                outFile.mkdirs()
+            } else {
+                outFile.parentFile?.mkdirs()
+                outFile.outputStream().use { zis.copyTo(it) }
+            }
+            zis.closeEntry()
+            entry = zis.nextEntry
+        }
+    }
+}
+
+tasks.register("downloadVoskModels") {
+    group = "vosk"
+    description = "Download Vosk small EN/CN speech models into appResources for Windows packaging"
+    val voskRoot = layout.projectDirectory.dir("appResources/common/vosk")
+    outputs.dir(voskRoot)
+    doLast {
+        val root = voskRoot.asFile
+        root.mkdirs()
+        voskModels.forEach { (folderName, url) ->
+            val targetDir = File(root, folderName)
+            if (isVoskModelReady(targetDir)) {
+                logger.lifecycle("Vosk model present: $folderName")
+                return@forEach
+            }
+            logger.lifecycle("Downloading Vosk model: $folderName")
+            val zipFile = File(root, "$folderName.zip")
+            URI(url).toURL().openStream().use { input ->
+                zipFile.outputStream().use { output -> input.copyTo(output) }
+            }
+            unpackVoskZip(zipFile, root)
+            zipFile.delete()
+            if (!isVoskModelReady(targetDir)) {
+                root
+                    .walkTopDown()
+                    .firstOrNull { it.name == "model.conf" && it.parentFile?.name == "conf" }
+                    ?.parentFile
+                    ?.parentFile
+                    ?.let { found ->
+                        if (found.absolutePath != targetDir.absolutePath) {
+                            found.copyRecursively(targetDir, overwrite = true)
+                        }
+                    }
+            }
+            if (!isVoskModelReady(targetDir)) {
+                throw GradleException("Failed to unpack Vosk model: $folderName")
+            }
+        }
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "com.inspiredandroid.kai.MainKt"
@@ -200,6 +275,7 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.AppImage)
             packageName = "Kai"
             packageVersion = libs.versions.appVersion.get()
+            appResourcesRootDir.set(layout.projectDirectory.dir("appResources"))
 
             macOS {
                 iconFile.set(project.file("icon.icns"))
@@ -222,6 +298,8 @@ compose.desktop {
 // it and strips the META-INF signatures, causing "SHA-256 digest error" at
 // runtime. After ProGuard finishes, replace the processed jar with the original.
 afterEvaluate {
+    tasks.named("prepareAppResources") { dependsOn("downloadVoskModels") }
+    tasks.named("run") { dependsOn("downloadVoskModels") }
     tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
         doLast {
             val proguardDir =

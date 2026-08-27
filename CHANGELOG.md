@@ -1,3 +1,8 @@
+## v3.5.3 — 2026-08-27
+
+### Changes
+- Windows release bundles Vosk Chinese and English speech models in the install package (no first-run download)
+
 ## v3.5.2 — 2026-08-27
 
 ### Fixes

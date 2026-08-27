@@ -3,9 +3,6 @@ package com.inspiredandroid.kai.speech
 import com.inspiredandroid.kai.Platform
 import com.inspiredandroid.kai.currentPlatform
 import com.inspiredandroid.kai.getAppFilesDirectory
-import com.inspiredandroid.kai.httpClient
-import io.ktor.client.request.get
-import io.ktor.client.statement.readBytes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -21,12 +18,11 @@ import javax.sound.sampled.DataLine
 import javax.sound.sampled.TargetDataLine
 
 /**
- * 离线语音转文字（Vosk）：首次使用时下载小型中英文模型到 ~/.kai/vosk/，之后本地识别。
- * 模型来源：https://alphacephei.com/vosk/models （Apache 2.0）
+ * 离线语音转文字（Vosk）：中英文小型模型随 Windows 安装包内置（app/resources/vosk/），
+ * 亦兼容此前下载到 ~/.kai/vosk/ 的缓存。模型来源：https://alphacephei.com/vosk/models （Apache 2.0）
  */
 internal class VoskSpeechToText : SpeechToText {
     private val listening = AtomicBoolean(false)
-    private var activeLanguageTag: String = "zh"
     private var captureThread: Thread? = null
     private var recognizer: Recognizer? = null
     private var model: Model? = null
@@ -37,9 +33,9 @@ internal class VoskSpeechToText : SpeechToText {
     override suspend fun startListening(languageTag: String): Result<Unit> = withContext(Dispatchers.IO) {
         if (!isSupported) return@withContext Result.failure(IllegalStateException("Speech not supported"))
         if (listening.get()) return@withContext Result.success(Unit)
-        activeLanguageTag = languageTag
-        val modelPath = ensureModelPath(languageTag)
-            ?: return@withContext Result.failure(IllegalStateException("无法下载语音识别模型"))
+        val spec = if (languageTag.startsWith("zh")) MODEL_CN else MODEL_EN
+        val modelPath = resolveModelDirectory(spec)?.absolutePath
+            ?: return@withContext Result.failure(IllegalStateException("无法加载语音识别模型"))
         runCatching {
             releaseRecognizer()
             model = Model(modelPath)
@@ -102,74 +98,32 @@ internal class VoskSpeechToText : SpeechToText {
         model = null
     }
 
-    private suspend fun ensureModelPath(languageTag: String): String? {
-        val spec = if (languageTag.startsWith("zh")) MODEL_CN else MODEL_EN
-        val modelDir = File(getAppFilesDirectory(), "vosk/${spec.folderName}")
-        if (isModelReady(modelDir)) return modelDir.absolutePath
-        return downloadAndUnpack(spec)?.absolutePath
+    private fun resolveModelDirectory(spec: ModelSpec): File? {
+        val bundledRoot = System.getProperty("compose.application.resources.dir")
+        if (bundledRoot != null) {
+            val bundled = File(bundledRoot, "vosk/${spec.folderName}")
+            if (isModelReady(bundled)) return bundled
+        }
+        val cached = File(getAppFilesDirectory(), "vosk/${spec.folderName}")
+        if (isModelReady(cached)) return cached
+        return null
     }
 
     private fun isModelReady(dir: File): Boolean =
         dir.isDirectory && (dir.resolve("am/final.mdl").exists() || dir.resolve("conf/model.conf").exists())
 
-    private suspend fun downloadAndUnpack(spec: ModelSpec): File? {
-        val targetDir = File(getAppFilesDirectory(), "vosk/${spec.folderName}")
-        val zipFile = File(getAppFilesDirectory(), "vosk/${spec.folderName}.zip")
-        return runCatching {
-            targetDir.parentFile?.mkdirs()
-            val client = httpClient {}
-            val bytes = client.get(spec.downloadUrl).readBytes()
-            zipFile.writeBytes(bytes)
-            unpackZip(zipFile, targetDir.parentFile!!)
-            zipFile.delete()
-            if (!isModelReady(targetDir)) {
-                targetDir.walkTopDown().firstOrNull { it.name == "model.conf" && it.parentFile?.name == "conf" }
-                    ?.parentFile?.parentFile
-                    ?.let { found ->
-                        if (found.absolutePath != targetDir.absolutePath) {
-                            found.copyRecursively(targetDir, overwrite = true)
-                        }
-                    }
-            }
-            if (!isModelReady(targetDir)) null else targetDir
-        }.getOrNull()
-    }
-
-    private fun unpackZip(zipFile: File, destDir: File) {
-        java.util.zip.ZipInputStream(zipFile.inputStream()).use { zis ->
-            var entry = zis.nextEntry
-            while (entry != null) {
-                val outFile = File(destDir, entry.name)
-                if (entry.isDirectory) {
-                    outFile.mkdirs()
-                } else {
-                    outFile.parentFile?.mkdirs()
-                    outFile.outputStream().use { zis.copyTo(it) }
-                }
-                zis.closeEntry()
-                entry = zis.nextEntry
-            }
-        }
-    }
-
     private fun parseVoskText(json: String): String = runCatching {
         Json.parseToJsonElement(json).jsonObject["text"]?.jsonPrimitive?.content?.trim() ?: ""
     }.getOrDefault("")
 
-    private data class ModelSpec(val folderName: String, val downloadUrl: String)
+    private data class ModelSpec(val folderName: String)
 
     private companion object {
         const val SAMPLE_RATE = 16000f
 
-        val MODEL_EN = ModelSpec(
-            folderName = "vosk-model-small-en-us-0.15",
-            downloadUrl = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
-        )
+        val MODEL_EN = ModelSpec(folderName = "vosk-model-small-en-us-0.15")
 
-        val MODEL_CN = ModelSpec(
-            folderName = "vosk-model-small-cn-0.22",
-            downloadUrl = "https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip",
-        )
+        val MODEL_CN = ModelSpec(folderName = "vosk-model-small-cn-0.22")
     }
 }
 
