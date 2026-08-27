@@ -1,3 +1,12 @@
+## v3.5.2 — 2026-08-27
+
+### Fixes
+- Settings: APP-FREE in same column as other parent models, all above model test card; APP-FREE included in benchmark queue
+- Collaboration button turns light green when wizard is open; level-3 back button visible in dark mode
+- Level-3 score slider auto-saves (removed save button); chat send button aligned with left icons
+- Windows title bar shows "Cui" with theme-aligned caption color
+- Windows speech-to-text: Vosk offline recognition for Chinese and English (downloads small models on first use)
+
 ## v3.5.1 — 2026-08-27
 
 ### Fixes

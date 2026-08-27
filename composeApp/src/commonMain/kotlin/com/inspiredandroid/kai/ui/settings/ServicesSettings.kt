@@ -242,63 +242,8 @@ internal fun ServicesContent(
         }
     }
 
-    // 一键测试所有大模型
-    val freeEntry = uiState.configuredServices.firstOrNull { it.instanceId == "free" }
-    val reorderableEntries = uiState.configuredServices.filter { it.instanceId != "free" }
-
-    if (freeEntry != null) {
-        ConfiguredServiceCardContent(
-            entry = freeEntry,
-            isExpanded = uiState.expandedServiceId == freeEntry.instanceId,
-            onExpand = { actions.onExpandService(if (uiState.expandedServiceId == freeEntry.instanceId) null else freeEntry.instanceId) },
-            onChangeApiKey = { },
-            onChangeBaseUrl = { },
-            onSelectModel = { modelId -> actions.onSelectModel(freeEntry.instanceId, modelId) },
-            onRemove = { },
-            localAvailableModels = uiState.localAvailableModels,
-            localImportedModels = uiState.localImportedModels,
-            totalDeviceMemoryBytes = uiState.totalDeviceMemoryBytes,
-            localFreeSpaceBytes = uiState.localFreeSpaceBytes,
-            localDownloadingModelId = uiState.localDownloadingModelId,
-            localDownloadProgress = uiState.localDownloadProgress,
-            localDownloadError = uiState.localDownloadError,
-            localImportingFileName = uiState.localImportingFileName,
-            localImportProgress = uiState.localImportProgress,
-            localImportError = uiState.localImportError,
-            onDownloadLocalModel = actions.onDownloadLocalModel,
-            onCancelLocalModelDownload = actions.onCancelLocalModelDownload,
-            onImportLocalModel = actions.onImportLocalModel,
-            onCancelLocalModelImport = actions.onCancelLocalModelImport,
-            onDeleteLocalModel = actions.onDeleteLocalModel,
-            onChangeModelContextTokens = actions.onChangeModelContextTokens,
-            modelContextTokens = uiState.modelContextTokens,
-            onOpenAppPermissionSettings = actions.onOpenAppPermissionSettings,
-            onRecheckLocalNetworkPermission = { actions.onRecheckLocalNetworkPermission(freeEntry.instanceId) },
-            modelBenchmarks = uiState.modelBenchmarks.associate { it.modelKey to it.totalScore },
-            openCodeTerminalThinking = uiState.openCodeTerminalThinking,
-            openCodeTerminalMode = uiState.openCodeTerminalMode,
-            onToggleOpenCodeTerminalThinking = actions.onToggleOpenCodeTerminalThinking,
-            onChangeOpenCodeTerminalMode = actions.onChangeOpenCodeTerminalMode,
-        )
-        Spacer(Modifier.height(8.dp))
-    }
-
-    ModelBenchmarkCard(
-        benchmarks = uiState.modelBenchmarks,
-        isRunning = uiState.isBenchmarkRunning,
-        progress = uiState.benchmarkProgress,
-        currentLabel = uiState.benchmarkCurrentLabel,
-        done = uiState.benchmarkDone,
-        summary = uiState.benchmarkSummary,
-        onRun = actions.onRunModelBenchmarks,
-        onCancel = actions.onCancelModelBenchmarks,
-        onClear = actions.onClearModelBenchmarks,
-    )
-
-    Spacer(Modifier.height(8.dp))
-
-    // Configured services list
-    val entries = reorderableEntries
+    // 母模型列表（含 APP-FREE），整体位于「模型测试」卡片上方
+    val entries = uiState.configuredServices
     ReorderableColumn(
         list = entries,
         onSettle = { fromIndex, toIndex ->
@@ -321,7 +266,7 @@ internal fun ServicesContent(
                     onChangeCustomModelId = { id -> actions.onChangeCustomModelId(entry.instanceId, id) },
                     onRemove = { actions.onRemoveService(entry.instanceId) },
                     isDragging = isDragging,
-                    dragHandleModifier = if (entries.size >= 2) Modifier.draggableHandle() else null,
+                    dragHandleModifier = if (entries.size >= 2 && entry.instanceId != "free") Modifier.draggableHandle() else null,
                     localAvailableModels = uiState.localAvailableModels,
                     localImportedModels = uiState.localImportedModels,
                     totalDeviceMemoryBytes = uiState.totalDeviceMemoryBytes,
@@ -350,6 +295,20 @@ internal fun ServicesContent(
             }
         }
     }
+
+    Spacer(Modifier.height(8.dp))
+
+    ModelBenchmarkCard(
+        benchmarks = uiState.modelBenchmarks,
+        isRunning = uiState.isBenchmarkRunning,
+        progress = uiState.benchmarkProgress,
+        currentLabel = uiState.benchmarkCurrentLabel,
+        done = uiState.benchmarkDone,
+        summary = uiState.benchmarkSummary,
+        onRun = actions.onRunModelBenchmarks,
+        onCancel = actions.onCancelModelBenchmarks,
+        onClear = actions.onClearModelBenchmarks,
+    )
 
     if (uiState.availableServicesToAdd.isNotEmpty()) {
         Spacer(Modifier.height(12.dp))

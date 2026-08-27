@@ -584,6 +584,7 @@ private fun ChatModeScreen(
                 },
                 chatMode = uiState.chatMode,
                 isCollaborating = uiState.isCollaborating,
+                showCollaborationWizard = uiState.showCollaborationWizard,
                 onOpenCollaborationWizard = uiState.actions.openCollaborationWizard,
                 navigationTabBar = navigationTabBar,
             )

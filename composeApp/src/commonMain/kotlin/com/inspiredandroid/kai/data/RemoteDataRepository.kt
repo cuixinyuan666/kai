@@ -249,25 +249,37 @@ class RemoteDataRepository(
         appSettings.setConfiguredServiceInstances(reordered)
     }
 
-    override fun getServiceEntries(): List<ServiceEntry> = getConfiguredServiceInstances().map { instance ->
-        val service = Service.fromId(instance.serviceId)
-        val modelId = appSettings.getInstanceEffectiveModelId(instance.instanceId).ifEmpty {
-            appSettings.getSelectedModelId(service)
+    override fun getServiceEntries(): List<ServiceEntry> {
+        val freeMode = appSettings.getFreeMode()
+        val freeOptions = FreeMode.entries.map { mode ->
+            ServiceModelOption(mode.modelId, mode.modelId.replaceFirstChar { it.uppercase() })
         }
-        // Surface every model branch the user can pick for this 总类 so the chat
-        // dropdown can render them as a multi-level list (e.g. opencode-hy3,
-        // opencode-deepseek v4) instead of just the active one.
-        val options = getInstanceModels(instance.instanceId, service).value.map { m ->
-            ServiceModelOption(m.id, m.displayName ?: m.id)
-        }
-        ServiceEntry(
-            instanceId = instance.instanceId,
-            serviceId = service.id,
-            serviceName = service.displayName,
-            modelId = modelId,
-            icon = service.icon,
-            modelOptions = options,
+        val freeEntry = ServiceEntry(
+            instanceId = "free",
+            serviceId = Service.Free.id,
+            serviceName = Service.Free.displayName,
+            modelId = freeMode.modelId,
+            icon = Service.Free.icon,
+            modelOptions = freeOptions,
         )
+        val configured = getConfiguredServiceInstances().map { instance ->
+            val service = Service.fromId(instance.serviceId)
+            val modelId = appSettings.getInstanceEffectiveModelId(instance.instanceId).ifEmpty {
+                appSettings.getSelectedModelId(service)
+            }
+            val options = getInstanceModels(instance.instanceId, service).value.map { m ->
+                ServiceModelOption(m.id, m.displayName ?: m.id)
+            }
+            ServiceEntry(
+                instanceId = instance.instanceId,
+                serviceId = service.id,
+                serviceName = service.displayName,
+                modelId = modelId,
+                icon = service.icon,
+                modelOptions = options,
+            )
+        }
+        return listOf(freeEntry) + configured
     }
 
     override fun isFreeFallbackEnabled(): Boolean = appSettings.isFreeFallbackEnabled()
@@ -2163,6 +2175,18 @@ class RemoteDataRepository(
     }
 
     override suspend fun askSilentlyWithInstance(instanceId: String, prompt: String, timeoutMs: Long): String {
+        if (instanceId == "free") {
+            val messages = listOf(History(role = History.Role.USER, content = prompt))
+            val creds = instanceCredentials("free", Service.Free)
+            return plainChat(
+                service = Service.Free,
+                credentials = creds,
+                messages = messages,
+                systemPrompt = null,
+                requestTimeoutMs = timeoutMs.takeIf { it > 0 },
+                retry = false,
+            ).content
+        }
         val instance = getConfiguredServiceInstances().find { it.instanceId == instanceId }
             ?: return askSilently(prompt)
         val service = Service.fromId(instance.serviceId)
@@ -2191,6 +2215,18 @@ class RemoteDataRepository(
         systemPrompt: String?,
         timeoutMs: Long,
     ): String {
+        if (instanceId == "free") {
+            val messages = listOf(History(role = History.Role.USER, content = prompt))
+            val creds = instanceCredentials("free", Service.Free).copy(modelId = modelId)
+            return plainChat(
+                service = Service.Free,
+                credentials = creds,
+                messages = messages,
+                systemPrompt = systemPrompt,
+                requestTimeoutMs = timeoutMs.takeIf { it > 0 },
+                retry = false,
+            ).content
+        }
         val instance = getConfiguredServiceInstances().find { it.instanceId == instanceId }
             ?: return ""
         val service = Service.fromId(instance.serviceId)

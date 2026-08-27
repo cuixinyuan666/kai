@@ -42,7 +42,7 @@ fun main() {
         Window(
             onCloseRequest = ::exitApplication,
             state = windowState,
-            title = "Kai 9000",
+            title = "Cui",
             icon = painterResource(Res.drawable.logo),
         ) {
             val awtWindow = (this as WindowScope).window

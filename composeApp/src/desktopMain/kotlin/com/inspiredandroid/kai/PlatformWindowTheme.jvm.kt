@@ -12,6 +12,7 @@ actual fun SyncPlatformWindowTheme() {
     val background = MaterialTheme.colorScheme.background
     val isDarkTitleBar = background.luminance() < 0.45f
     LaunchedEffect(background, isDarkTitleBar) {
+        (awtWindow as? java.awt.Frame)?.title = "Cui"
         applyDesktopWindowTheme(awtWindow, isDarkTitleBar, background)
     }
 }

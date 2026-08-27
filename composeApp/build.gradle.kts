@@ -170,6 +170,7 @@ kotlin {
                 implementation(libs.sqldelight.sqlite.driver)
                 implementation(libs.jna)
                 implementation(libs.jna.platform)
+                implementation(libs.vosk)
             }
         }
         iosMain.dependencies {

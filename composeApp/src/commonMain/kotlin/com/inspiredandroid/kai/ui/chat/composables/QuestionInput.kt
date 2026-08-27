@@ -408,7 +408,7 @@ internal fun TrailingIcon(
         ) {
             Icon(
                 vectorResource(icon),
-                modifier = Modifier.size(32.dp).then(pulseModifier),
+                modifier = Modifier.size(24.dp).then(pulseModifier),
                 contentDescription = null,
                 tint = Color.White,
             )

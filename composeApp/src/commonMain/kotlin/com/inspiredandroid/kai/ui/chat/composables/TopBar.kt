@@ -58,10 +58,11 @@ internal fun TopBar(
     onShowHistory: () -> Unit,
     chatMode: ChatMode = ChatMode.SINGLE,
     isCollaborating: Boolean = false,
+    showCollaborationWizard: Boolean = false,
     onOpenCollaborationWizard: () -> Unit = {},
     navigationTabBar: (@Composable () -> Unit)? = null,
 ) {
-    val collaborationTint = if (isCollaborating) {
+    val collaborationTint = if (isCollaborating || showCollaborationWizard) {
         Color(0xFF81C784)
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant

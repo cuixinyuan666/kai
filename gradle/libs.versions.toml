@@ -1,8 +1,9 @@
 [versions]
 agp = "9.3.1"
-appVersion = "3.5.1"
+appVersion = "3.5.2"
+vosk = "0.3.38"
 jna = "5.16.0"
-android-versionCode = "118"
+android-versionCode = "119"
 android-compileSdk = "37"
 android-minSdk = "26"
 android-targetSdk = "37"
@@ -93,6 +94,7 @@ bouncycastle-provider = { module = "org.bouncycastle:bcprov-jdk18on", version.re
 xz = { module = "org.tukaani:xz", version.ref = "xz" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
+vosk = { module = "com.alphacephei:vosk", version.ref = "vosk" }
 reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 litert-lm = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litert-lm" }
 litert-lm-jvm = { module = "com.google.ai.edge.litertlm:litertlm-jvm", version.ref = "litert-lm" }

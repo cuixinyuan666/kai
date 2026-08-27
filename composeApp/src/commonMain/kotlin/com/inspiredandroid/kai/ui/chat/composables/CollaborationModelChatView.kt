@@ -100,7 +100,11 @@ internal fun CollaborationModelChatView(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
                 }
                 Text(
                     conversation.title,
@@ -149,17 +153,14 @@ internal fun CollaborationModelChatView(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Slider(
                         value = score,
-                        onValueChange = { score = it },
+                        onValueChange = { newScore ->
+                            score = newScore
+                            actions.setCollaborationModelScore(conversation.id, newScore.toDouble())
+                        },
                         valueRange = 0f..100f,
                         modifier = Modifier.weight(1f),
                     )
                     Text("${score.toInt()}", color = MaterialTheme.colorScheme.onSurface)
-                }
-                Button(
-                    onClick = { actions.setCollaborationModelScore(conversation.id, score.toDouble()) },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("保存评分")
                 }
             }
         }
