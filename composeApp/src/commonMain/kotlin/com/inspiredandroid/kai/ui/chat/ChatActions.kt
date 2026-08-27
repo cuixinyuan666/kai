@@ -32,6 +32,7 @@ data class ChatActions(
     // 协作模式
     val toggleChatMode: () -> Unit,
     val startCollaboration: (String) -> Unit,
+    val continueCollaborationRound: () -> Unit,
     val stopCollaboration: () -> Unit,
     val clearCollaborationNotification: () -> Unit,
     /** 用户消息“重新发送”：截断到该消息之前，再以原文重新提问。 */

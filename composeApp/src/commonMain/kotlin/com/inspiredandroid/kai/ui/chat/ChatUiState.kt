@@ -7,8 +7,9 @@ import com.inspiredandroid.kai.data.Attachment
 import com.inspiredandroid.kai.data.FallbackStatus
 import com.inspiredandroid.kai.data.ReasoningRequestMode
 import com.inspiredandroid.kai.data.ServiceEntry
-import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.collaboration.CollaborationEvent
+import com.inspiredandroid.kai.data.collaboration.CollaborationRoundSnapshot
+import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.SharedJson
 import com.inspiredandroid.kai.data.SmsDraft
 import com.inspiredandroid.kai.data.UiSubmission
@@ -103,8 +104,12 @@ data class ChatUiState(
     val collaborationEvents: List<CollaborationEvent> = emptyList(),
     val collaborationSummary: String? = null,
     val collaborationNotification: String? = null,
-    /** 当前协作任务的用户原始提问，供各角色独立视图展示完整聊天记录。 */
+    /** 当前协作任务的用户原始提问。 */
     val collaborationQuestion: String? = null,
+    val collaborationRound: Int = 0,
+    val collaborationRounds: List<CollaborationRoundSnapshot> = emptyList(),
+    /** 上一轮有成功作答的模型时，可继续下一轮。 */
+    val canContinueCollaboration: Boolean = false,
 ) {
     val heartbeatConversationId: String?
         get() = savedConversations.firstOrNull { it.isHeartbeat }?.id

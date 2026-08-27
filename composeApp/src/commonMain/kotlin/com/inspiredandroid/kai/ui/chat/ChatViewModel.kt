@@ -9,11 +9,12 @@ import com.inspiredandroid.kai.data.Service
 import com.inspiredandroid.kai.data.ServiceEntry
 import com.inspiredandroid.kai.data.TaskScheduler
 import com.inspiredandroid.kai.data.UiSubmission
-import com.inspiredandroid.kai.data.collaboration.CollaborationConfig
 import com.inspiredandroid.kai.data.collaboration.CollaborationEvent
 import com.inspiredandroid.kai.data.collaboration.CollaborationListener
 import com.inspiredandroid.kai.data.collaboration.CollaborationOrchestrator
+import com.inspiredandroid.kai.data.collaboration.CollaborationRoundSnapshot
 import com.inspiredandroid.kai.data.collaboration.ChatMode
+import com.inspiredandroid.kai.data.collaboration.ModelRef
 import com.inspiredandroid.kai.data.collaboration.ModelScore
 import com.inspiredandroid.kai.getBackgroundDispatcher
 import com.inspiredandroid.kai.network.UiError
@@ -87,6 +88,7 @@ class ChatViewModel(
         discardSmsDraft = ::discardSmsDraft,
         toggleChatMode = ::toggleChatMode,
         startCollaboration = ::startCollaboration,
+        continueCollaborationRound = ::continueCollaborationRound,
         stopCollaboration = ::stopCollaboration,
         clearCollaborationNotification = ::clearCollaborationNotification,
         resendUserMessage = ::resendUserMessage,
@@ -95,6 +97,7 @@ class ChatViewModel(
     private var currentJob: Job? = null
     private var pendingConversationDeleteJob: Job? = null
     private var collaborationOrchestrator: CollaborationOrchestrator? = null
+    private var collaborationSuccessfulAnswers: Map<ModelRef, String> = emptyMap()
     private val _state = MutableStateFlow(
         ChatUiState(
             actions = actions,
@@ -456,9 +459,8 @@ class ChatViewModel(
 
     private fun startCollaboration(question: String) {
         if (question.isBlank()) return
-        val config = dataRepository.getCollaborationConfig()
+        collaborationSuccessfulAnswers = emptyMap()
         stopCollaboration()
-        // 将用户提问写入当前会话历史，使协作模式也有可回看的聊天记录。
         viewModelScope.launch(backgroundDispatcher) {
             dataRepository.appendUserMessageToCurrentChat(question)
         }
@@ -469,8 +471,42 @@ class ChatViewModel(
                 collaborationSummary = null,
                 collaborationNotification = null,
                 collaborationQuestion = question,
+                collaborationRound = 0,
+                collaborationRounds = emptyList(),
+                canContinueCollaboration = false,
             )
         }
+        runCollaborationRound(roundNumber = 1, question = question)
+    }
+
+    private fun continueCollaborationRound() {
+        val state = _state.value
+        if (state.isCollaborating || !state.canContinueCollaboration) return
+        val question = state.collaborationQuestion ?: return
+        if (collaborationSuccessfulAnswers.isEmpty()) return
+        val nextRound = state.collaborationRound + 1
+        _state.update {
+            it.copy(
+                isCollaborating = true,
+                collaborationSummary = null,
+                canContinueCollaboration = false,
+            )
+        }
+        runCollaborationRound(
+            roundNumber = nextRound,
+            question = question,
+            targetModels = collaborationSuccessfulAnswers.keys.toList(),
+            previousAnswers = collaborationSuccessfulAnswers,
+        )
+    }
+
+    private fun runCollaborationRound(
+        roundNumber: Int,
+        question: String,
+        targetModels: List<ModelRef> = emptyList(),
+        previousAnswers: Map<ModelRef, String> = emptyMap(),
+    ) {
+        val config = dataRepository.getCollaborationConfig()
         val orchestrator = CollaborationOrchestrator(
             repository = dataRepository,
             listener = object : CollaborationListener {
@@ -483,15 +519,30 @@ class ChatViewModel(
                 }
 
                 override fun onScores(scores: List<ModelScore>) {
-                    // 合并到协作配置中的评分表
                     val current = dataRepository.getCollaborationConfig()
-                    val merged = (current.scores.filter { cs -> scores.none { it.instanceId == cs.instanceId && it.modelId == cs.modelId } } + scores)
+                    val merged = (
+                        current.scores.filter { cs ->
+                            scores.none { it.instanceId == cs.instanceId && it.modelId == cs.modelId }
+                        } + scores
+                    )
                     dataRepository.setCollaborationConfig(current.copy(scores = merged))
                 }
 
-                override fun onFinished(summary: String, allConfirmed: Boolean) {
+                override fun onRoundFinished(round: Int, snapshot: CollaborationRoundSnapshot, canContinue: Boolean) {
+                    collaborationSuccessfulAnswers = snapshot.responses
+                        .filter { !it.failed && !it.response.isNullOrBlank() }
+                        .associate { it.ref to it.response!! }
+                    _state.update { s ->
+                        s.copy(
+                            collaborationRound = round,
+                            collaborationRounds = s.collaborationRounds + snapshot,
+                            canContinueCollaboration = canContinue,
+                        )
+                    }
+                }
+
+                override fun onFinished(summary: String, allSucceeded: Boolean) {
                     _state.update { s -> s.copy(isCollaborating = false, collaborationSummary = summary) }
-                    // 将最终汇总写入当前会话历史作为助手消息，使协作结果可回看。
                     viewModelScope.launch(backgroundDispatcher) {
                         dataRepository.appendAssistantMessageToCurrentChat(summary)
                     }
@@ -500,7 +551,13 @@ class ChatViewModel(
         )
         collaborationOrchestrator = orchestrator
         viewModelScope.launch {
-            orchestrator.run(question, config)
+            orchestrator.runRound(
+                originalQuestion = question,
+                config = config,
+                roundNumber = roundNumber,
+                targetModels = targetModels,
+                previousAnswers = previousAnswers,
+            )
         }
     }
 

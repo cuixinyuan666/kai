@@ -1,33 +1,43 @@
 package com.inspiredandroid.kai.data.collaboration
 
 import kotlin.test.Test
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CollaborationExtractorsTest {
 
     @Test
-    fun isSessionTerminationReply_positiveKeywords() {
-        assertTrue(isSessionTerminationReply("没有问题"))
-        assertTrue(isSessionTerminationReply("可以完成"))
-        assertTrue(isSessionTerminationReply("确认，方案可行"))
-        assertTrue(isSessionTerminationReply("没有疑问，可以接受"))
-        assertTrue(isSessionTerminationReply("评估：确认"))
+    fun formatFollowUpPrompt_containsQuestionAndAnswer() {
+        val prompt = formatFollowUpPrompt("什么是 Kotlin？", "Kotlin 是一门编程语言。")
+        assertTrue(prompt.contains("【原始问题】"))
+        assertTrue(prompt.contains("什么是 Kotlin？"))
+        assertTrue(prompt.contains("【你上一次的回答】"))
+        assertTrue(prompt.contains("Kotlin 是一门编程语言。"))
+        assertTrue(prompt.contains("是否存在问题"))
     }
 
     @Test
-    fun isSessionTerminationReply_negativeKeywords() {
-        assertFalse(isSessionTerminationReply(""))
-        assertFalse(isSessionTerminationReply("存在问题，需要改进"))
-        assertFalse(isSessionTerminationReply("不确认，需要修改"))
-        assertFalse(isSessionTerminationReply("仍有疑问，请补充"))
-    }
-
-    @Test
-    fun formatRelayMessages() {
-        val q = formatSupervisorQuestionForTask("请说明边界条件")
-        assertTrue(q.contains("针对你的上次回答，监督方提出的问题是：请说明边界条件"))
-        val a = formatTaskAnswerForSupervisor("边界条件如下…")
-        assertTrue(a.contains("针对你的上一次疑问，任务方的回答是：边界条件如下…"))
+    fun buildCollaborationCopyText_includesAllRounds() {
+        val ref = ModelRef("inst1", "model1")
+        val rounds = listOf(
+            CollaborationRoundSnapshot(
+                round = 1,
+                responses = listOf(
+                    CollaborationModelSnapshot(ref = ref, label = "GPT", response = "回答一", failed = false),
+                ),
+            ),
+            CollaborationRoundSnapshot(
+                round = 2,
+                responses = listOf(
+                    CollaborationModelSnapshot(ref = ref, label = "GPT", response = "回答二", failed = false),
+                ),
+            ),
+        )
+        val text = buildCollaborationCopyText("用户问题", rounds)
+        assertTrue(text.contains("【用户提问】"))
+        assertTrue(text.contains("用户问题"))
+        assertTrue(text.contains("第 1 轮"))
+        assertTrue(text.contains("回答一"))
+        assertTrue(text.contains("第 2 轮"))
+        assertTrue(text.contains("回答二"))
     }
 }

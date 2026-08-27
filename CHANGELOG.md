@@ -1,3 +1,12 @@
+## v3.3.0 — 2026-08-27
+
+### Features
+- Collaboration mode: remove task-party and supervisor roles; broadcast one instruction to all models in parallel
+- Only models with model-test total score **> 0** participate; failed probes score 0
+- Configurable per-call max wait time; one-click copy for question plus all model replies across rounds
+- After each round, **下一轮** re-sends only to models that succeeded, using question + prior answer + review format
+- Unlimited follow-up rounds while successful models remain
+
 ## v3.2.0 — 2026-08-26
 
 ### Features
