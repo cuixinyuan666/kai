@@ -7,6 +7,7 @@ import com.inspiredandroid.kai.Platform
 import com.inspiredandroid.kai.currentPlatform
 import com.inspiredandroid.kai.data.DataRepository
 import com.inspiredandroid.kai.data.ImportSection
+import com.inspiredandroid.kai.data.FreeMode
 import com.inspiredandroid.kai.data.ModelBenchmark
 import com.inspiredandroid.kai.data.Service
 import com.inspiredandroid.kai.data.ServiceEntry
@@ -350,7 +351,26 @@ class SettingsViewModel(
         }
     }
 
-    private fun buildConfiguredServiceEntries(): List<ConfiguredServiceEntry> = dataRepository.getConfiguredServiceInstances().map { instance ->
+    private fun buildFreeServiceEntry(): ConfiguredServiceEntry {
+        val currentMode = dataRepository.getFreeMode()
+        val models = FreeMode.entries.map { mode ->
+            SettingsModel(
+                id = mode.modelId,
+                subtitle = mode.modelId.replaceFirstChar { it.uppercase() },
+                isSelected = mode == currentMode,
+            )
+        }.toImmutableList()
+        return ConfiguredServiceEntry(
+            instanceId = "free",
+            service = Service.Free,
+            connectionStatus = ConnectionStatus.Connected,
+            selectedModel = models.firstOrNull { it.isSelected },
+            models = models,
+        )
+    }
+
+    private fun buildConfiguredServiceEntries(): List<ConfiguredServiceEntry> =
+        listOf(buildFreeServiceEntry()) + dataRepository.getConfiguredServiceInstances().map { instance ->
         val service = Service.fromId(instance.serviceId)
         val models = dataRepository.getInstanceModels(instance.instanceId, service).value
         ConfiguredServiceEntry(
@@ -403,6 +423,7 @@ class SettingsViewModel(
     }
 
     private fun onRemoveService(instanceId: String) {
+        if (instanceId == "free") return
         commitPendingDeletion()
         _state.update {
             it.copy(
@@ -417,7 +438,8 @@ class SettingsViewModel(
     }
 
     private fun onReorderServices(orderedIds: List<String>) {
-        dataRepository.reorderConfiguredServices(orderedIds)
+        val filteredIds = orderedIds.filter { it != "free" }
+        dataRepository.reorderConfiguredServices(filteredIds)
         refreshServiceList()
     }
 
@@ -484,6 +506,12 @@ class SettingsViewModel(
     }
 
     private fun onSelectModel(instanceId: String, modelId: String) {
+        if (instanceId == "free") {
+            val mode = FreeMode.entries.find { it.modelId == modelId } ?: return
+            dataRepository.setFreeMode(mode)
+            refreshServiceList()
+            return
+        }
         val entry = _state.value.configuredServices.find { it.instanceId == instanceId } ?: return
         dataRepository.updateInstanceSelectedModel(instanceId, entry.service, modelId)
         refreshInstanceModels(instanceId)
@@ -1000,8 +1028,11 @@ class SettingsViewModel(
     // endregion
 
     private fun sortedConfigured(entries: List<ConfiguredServiceEntry>, reversed: Boolean = _state.value.serviceSortReversed): List<ConfiguredServiceEntry> {
-        val sorted = entries.sortedBy { it.service.displayName }
-        return if (reversed) sorted.asReversed() else sorted
+        val free = entries.firstOrNull { it.instanceId == "free" }
+        val rest = entries.filter { it.instanceId != "free" }
+        val sorted = rest.sortedBy { it.service.displayName }
+        val ordered = if (reversed) sorted.asReversed() else sorted
+        return if (free != null) listOf(free) + ordered else ordered
     }
 
     private fun sortedAvailable(services: List<Service>, reversed: Boolean = _state.value.serviceSortReversed): List<Service> {

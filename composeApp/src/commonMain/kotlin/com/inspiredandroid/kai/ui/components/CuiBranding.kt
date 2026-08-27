@@ -10,7 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-/** 空状态品牌：Cu + 动效圆点叠在 i 上方 */
+/** 空状态品牌：Cu + 无点 i + 动效圆点作为 i 上方圆点 */
 @Composable
 fun CuiBranding(modifier: Modifier = Modifier) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
@@ -27,7 +27,7 @@ fun CuiBranding(modifier: Modifier = Modifier) {
                 size = 18.dp,
             )
             Text(
-                text = "i",
+                text = "ı",
                 style = MaterialTheme.typography.displaySmall,
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.offset(x = 2.dp),

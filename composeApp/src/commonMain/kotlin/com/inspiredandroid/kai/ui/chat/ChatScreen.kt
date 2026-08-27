@@ -75,6 +75,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.inspiredandroid.kai.BackIcon
 import com.inspiredandroid.kai.TerminalLine
 import com.inspiredandroid.kai.data.Service
+import com.inspiredandroid.kai.data.metadata
 import com.inspiredandroid.kai.data.supportsAgenticFlows
 import com.inspiredandroid.kai.getBackgroundDispatcher
 import com.inspiredandroid.kai.onDragAndDropEventDropped
@@ -1036,6 +1037,10 @@ private fun ChatModeScreen(
                         hasNextModel = index >= 0 && index < siblings.lastIndex,
                         onPrevModel = { uiState.actions.navigateCollaborationModel(-1) },
                         onNextModel = { uiState.actions.navigateCollaborationModel(1) },
+                        modelBenchmarks = uiState.modelBenchmarks,
+                        serviceIdForModel = uiState.availableServices
+                            .find { it.instanceId == modelConversation.metadata().instanceId }
+                            ?.serviceId,
                     )
                 }
             }
@@ -1062,8 +1067,15 @@ private fun ChatModeScreen(
     if (uiState.showCollaborationWizard) {
         CollaborationWizardSheet(
             defaultConfig = uiState.collaborationConfig,
+            supportedFileExtensions = uiState.supportedFileExtensions,
+            speechSupported = speechToText?.isSupported == true,
+            isOptimizingPrompt = uiState.isOptimizingPrompt,
+            pendingPromptText = uiState.pendingPromptText,
+            onOptimizePrompt = { uiState.actions.optimizePrompt(it) },
+            onPendingPromptConsumed = uiState.actions.clearPendingPromptText,
             onDismiss = uiState.actions.dismissCollaborationWizard,
             onStart = uiState.actions.startCollaborationTask,
+            speechToText = speechToText,
         )
     }
 }

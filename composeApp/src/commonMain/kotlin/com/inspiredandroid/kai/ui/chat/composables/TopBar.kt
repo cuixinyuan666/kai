@@ -61,9 +61,10 @@ internal fun TopBar(
     onOpenCollaborationWizard: () -> Unit = {},
     navigationTabBar: (@Composable () -> Unit)? = null,
 ) {
-    val collaborationTint = when {
-        isCollaborating || chatMode == ChatMode.COLLABORATION -> Color(0xFF81C784)
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    val collaborationTint = if (isCollaborating) {
+        Color(0xFF81C784)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
     }
 
   val barModifier = Modifier

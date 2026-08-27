@@ -4,6 +4,7 @@ import com.inspiredandroid.kai.Platform
 import com.inspiredandroid.kai.currentPlatform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.nio.charset.Charset
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -29,6 +30,8 @@ internal class WindowsSpeechToText : SpeechToText {
         listening.set(false)
         val culture = if (activeLanguageTag.startsWith("zh")) "zh-CN" else "en-US"
         val script = """
+            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+            ${'$'}OutputEncoding = [Console]::OutputEncoding
             Add-Type -AssemblyName System.Speech
             ${'$'}culture = New-Object System.Globalization.CultureInfo("$culture")
             ${'$'}recognizer = New-Object System.Speech.Recognition.SpeechRecognitionEngine(${'$'}culture)
@@ -37,10 +40,17 @@ internal class WindowsSpeechToText : SpeechToText {
             if (${'$'}result -ne ${'$'}null) { ${'$'}result.Text } else { "" }
         """.trimIndent()
         try {
-            val process = ProcessBuilder("powershell", "-NoProfile", "-Command", script)
+            val process = ProcessBuilder(
+                "powershell",
+                "-NoProfile",
+                "-OutputFormat",
+                "Text",
+                "-Command",
+                script,
+            )
                 .redirectErrorStream(true)
                 .start()
-            val output = process.inputStream.bufferedReader().readText().trim()
+            val output = process.inputStream.bufferedReader(Charset.forName("UTF-8")).readText().trim()
             val code = process.waitFor()
             if (code != 0 && output.isBlank()) {
                 Result.failure(IllegalStateException("语音识别失败"))

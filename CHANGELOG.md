@@ -1,3 +1,26 @@
+## v3.5.1 — 2026-08-27
+
+### Fixes
+- Windows title bar follows app theme (dark mode + caption color); collaboration button gray when idle
+- Collaboration model score slider uses model-test benchmarks instead of default 50
+- Cui logo: dotless i with animated dot only
+- Settings: removed Integrations tab; APP-FREE in model list above model test card
+- Shell command tool enabled by default on desktop; collaboration wizard supports attachments, folders, speech, prompt optimize
+- Windows speech-to-text UTF-8 output fix
+
+## v3.5.0 — 2026-08-27
+
+### Features
+- UI polish: Cui branding, eye-care theme, collaboration button in top bar, level-3 model navigation arrows
+- Speech-to-text (Windows desktop) and prompt optimization using top-scored models
+- Chat history folder alphabetical sort with reverse toggle; task-level delete/retry
+- Model test: user collaboration scores sync with note; grouped display with zero-score section
+- APP-FREE service card; settings tab persistence; default maximized window on desktop
+
+### Changes
+- Removed sponsor/business sections, collaboration settings tab, and integration request card
+- Splinterlands description translated to Chinese
+
 ## v3.4.1 — 2026-08-27
 
 ### Fixes

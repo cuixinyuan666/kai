@@ -516,6 +516,7 @@ class FakeDataRepository : DataRepository {
         modelId: String,
         question: String,
         timeoutMs: Long,
+        files: List<io.github.vinceglb.filekit.PlatformFile>,
     ): String = ""
 
     override suspend fun retryCollaborationModel(conversationId: String, timeoutMs: Long): String = ""

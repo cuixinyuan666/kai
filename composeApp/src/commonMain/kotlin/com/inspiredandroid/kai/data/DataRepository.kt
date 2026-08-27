@@ -238,6 +238,7 @@ interface DataRepository {
         modelId: String,
         question: String,
         timeoutMs: Long = 0L,
+        files: List<io.github.vinceglb.filekit.PlatformFile> = emptyList(),
     ): String
 
     suspend fun retryCollaborationModel(conversationId: String, timeoutMs: Long): String

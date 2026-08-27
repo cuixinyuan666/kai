@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.WindowPlacement
+import androidx.compose.ui.window.WindowScope
 import androidx.compose.ui.window.rememberWindowState
 import androidx.navigation.compose.rememberNavController
 import kai.composeapp.generated.resources.Res
@@ -44,6 +45,8 @@ fun main() {
             title = "Kai 9000",
             icon = painterResource(Res.drawable.logo),
         ) {
+            val awtWindow = (this as WindowScope).window
+            ProvideAwtWindow(awtWindow) {
             // Defer TTS initialization until after the first frame
             var ttsReady by remember { mutableStateOf(false) }
             LaunchedEffect(Unit) { ttsReady = true }
@@ -58,6 +61,7 @@ fun main() {
                 navController = navController,
                 textToSpeech = textToSpeech,
             )
+            }
         }
     }
 }

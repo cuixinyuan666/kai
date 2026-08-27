@@ -243,6 +243,46 @@ internal fun ServicesContent(
     }
 
     // 一键测试所有大模型
+    val freeEntry = uiState.configuredServices.firstOrNull { it.instanceId == "free" }
+    val reorderableEntries = uiState.configuredServices.filter { it.instanceId != "free" }
+
+    if (freeEntry != null) {
+        ConfiguredServiceCardContent(
+            entry = freeEntry,
+            isExpanded = uiState.expandedServiceId == freeEntry.instanceId,
+            onExpand = { actions.onExpandService(if (uiState.expandedServiceId == freeEntry.instanceId) null else freeEntry.instanceId) },
+            onChangeApiKey = { },
+            onChangeBaseUrl = { },
+            onSelectModel = { modelId -> actions.onSelectModel(freeEntry.instanceId, modelId) },
+            onRemove = { },
+            localAvailableModels = uiState.localAvailableModels,
+            localImportedModels = uiState.localImportedModels,
+            totalDeviceMemoryBytes = uiState.totalDeviceMemoryBytes,
+            localFreeSpaceBytes = uiState.localFreeSpaceBytes,
+            localDownloadingModelId = uiState.localDownloadingModelId,
+            localDownloadProgress = uiState.localDownloadProgress,
+            localDownloadError = uiState.localDownloadError,
+            localImportingFileName = uiState.localImportingFileName,
+            localImportProgress = uiState.localImportProgress,
+            localImportError = uiState.localImportError,
+            onDownloadLocalModel = actions.onDownloadLocalModel,
+            onCancelLocalModelDownload = actions.onCancelLocalModelDownload,
+            onImportLocalModel = actions.onImportLocalModel,
+            onCancelLocalModelImport = actions.onCancelLocalModelImport,
+            onDeleteLocalModel = actions.onDeleteLocalModel,
+            onChangeModelContextTokens = actions.onChangeModelContextTokens,
+            modelContextTokens = uiState.modelContextTokens,
+            onOpenAppPermissionSettings = actions.onOpenAppPermissionSettings,
+            onRecheckLocalNetworkPermission = { actions.onRecheckLocalNetworkPermission(freeEntry.instanceId) },
+            modelBenchmarks = uiState.modelBenchmarks.associate { it.modelKey to it.totalScore },
+            openCodeTerminalThinking = uiState.openCodeTerminalThinking,
+            openCodeTerminalMode = uiState.openCodeTerminalMode,
+            onToggleOpenCodeTerminalThinking = actions.onToggleOpenCodeTerminalThinking,
+            onChangeOpenCodeTerminalMode = actions.onChangeOpenCodeTerminalMode,
+        )
+        Spacer(Modifier.height(8.dp))
+    }
+
     ModelBenchmarkCard(
         benchmarks = uiState.modelBenchmarks,
         isRunning = uiState.isBenchmarkRunning,
@@ -258,7 +298,7 @@ internal fun ServicesContent(
     Spacer(Modifier.height(8.dp))
 
     // Configured services list
-    val entries = uiState.configuredServices
+    val entries = reorderableEntries
     ReorderableColumn(
         list = entries,
         onSettle = { fromIndex, toIndex ->
@@ -317,10 +357,6 @@ internal fun ServicesContent(
             Text(stringResource(Res.string.settings_add_service))
         }
     }
-
-    // Free tier card (always at bottom)
-    Spacer(Modifier.height(16.dp))
-    FreeSettings()
 
     // Add service bottom sheet
     if (showAddServiceSheet) {
@@ -571,6 +607,23 @@ private fun ConfiguredServiceCardContent(
                         onChangeModelContextTokens = onChangeModelContextTokens,
                         modelContextTokens = modelContextTokens,
                     )
+                } else if (entry.service == Service.Free) {
+                    Text(
+                        text = stringResource(Res.string.settings_free_tier_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    if (entry.models.isNotEmpty()) {
+                        ModelSelection(
+                            currentSelectedModel = entry.selectedModel,
+                            models = entry.models,
+                            serviceName = entry.service.displayName,
+                            onClick = onSelectModel,
+                            modelBenchmarks = modelBenchmarks,
+                            serviceId = entry.service.id,
+                        )
+                    }
                 } else if (entry.service is Service.OpenAICompatible) {
                     OpenAICompatibleSettings(
                         baseUrl = entry.baseUrl,
@@ -613,20 +666,22 @@ private fun ConfiguredServiceCardContent(
 
                 Spacer(Modifier.height(12.dp))
 
-                // Remove action
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextButton(
-                        onClick = onRemove,
-                        modifier = Modifier.handCursor(),
+                if (entry.service != Service.Free) {
+                    // Remove action
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = stringResource(Res.string.settings_remove_service),
-                            color = MaterialTheme.colorScheme.error,
-                        )
+                        TextButton(
+                            onClick = onRemove,
+                            modifier = Modifier.handCursor(),
+                        ) {
+                            Text(
+                                text = stringResource(Res.string.settings_remove_service),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
                 }
             }

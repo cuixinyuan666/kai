@@ -43,6 +43,7 @@ import com.inspiredandroid.kai.ui.DarkColorScheme
 import com.inspiredandroid.kai.ui.EyeCareColorScheme
 import com.inspiredandroid.kai.ui.LightColorScheme
 import com.inspiredandroid.kai.ui.Theme
+import com.inspiredandroid.kai.SyncPlatformWindowTheme
 import com.inspiredandroid.kai.ui.chat.ChatScreen
 import com.inspiredandroid.kai.ui.chat.ChatViewModel
 import com.inspiredandroid.kai.ui.components.FullScreenImageHost
@@ -165,6 +166,7 @@ private fun AppContent(
         LocalUriHandler provides sandboxAwareUriHandler,
     ) {
         Theme(colorScheme = effectiveColorScheme) {
+            SyncPlatformWindowTheme()
             FullScreenImageHost {
                 val chatViewModel: ChatViewModel = koinViewModel()
                 val showTabBar = currentPlatform !is Platform.Mobile

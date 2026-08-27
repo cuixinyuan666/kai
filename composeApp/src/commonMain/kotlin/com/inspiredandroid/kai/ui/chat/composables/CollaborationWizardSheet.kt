@@ -11,41 +11,67 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.inspiredandroid.kai.data.collaboration.CollaborationConfig
 import com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams
+import com.inspiredandroid.kai.speech.SpeechToText
 import com.inspiredandroid.kai.ui.KaiOutlinedTextField
+import io.github.vinceglb.filekit.PlatformFile
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun CollaborationWizardSheet(
     defaultConfig: CollaborationConfig,
+    supportedFileExtensions: ImmutableList<String>,
+    speechSupported: Boolean,
+    isOptimizingPrompt: Boolean,
+    pendingPromptText: String?,
+    onOptimizePrompt: (String) -> Unit,
+    onPendingPromptConsumed: () -> Unit,
     onDismiss: () -> Unit,
     onStart: (CollaborationWizardParams) -> Unit,
+    speechToText: SpeechToText? = null,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
         var step by remember { mutableIntStateOf(0) }
-        var question by remember { mutableStateOf("") }
+        var questionInputText by remember { mutableStateOf(TextFieldValue("")) }
+        val wizardFiles = remember { mutableStateListOf<PlatformFile>() }
+        var isSpeechListening by remember { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
         var minScoreText by remember { mutableStateOf("0") }
         var maxWait by remember { mutableIntStateOf(defaultConfig.maxWaitSeconds) }
         var retryCount by remember { mutableIntStateOf(defaultConfig.retryCount) }
         var notifyFailure by remember { mutableStateOf(defaultConfig.notifyOnFailure) }
         var notifyComplete by remember { mutableStateOf(defaultConfig.notifyOnComplete) }
+
+        LaunchedEffect(pendingPromptText) {
+            val text = pendingPromptText
+            if (text != null) {
+                questionInputText = TextFieldValue(text)
+                onPendingPromptConsumed()
+            }
+        }
 
         Column(
             modifier = Modifier
@@ -57,13 +83,44 @@ internal fun CollaborationWizardSheet(
 
             when (step) {
                 0 -> {
-                    Text("请输入要发送给各模型的问题或任务。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    KaiOutlinedTextField(
-                        value = question,
-                        onValueChange = { question = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("问题") },
-                        minLines = 4,
+                    Text(
+                        "请输入要发送给各模型的问题或任务。支持附件、文件夹、语音与提示词优化。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    QuestionInput(
+                        files = wizardFiles.toImmutableList(),
+                        addFile = { wizardFiles.add(it) },
+                        removeFile = { wizardFiles.remove(it) },
+                        ask = { /* 向导内由「下一步」提交，不在此处发送 */ },
+                        supportedFileExtensions = supportedFileExtensions,
+                        textState = questionInputText,
+                        onTextStateChange = { questionInputText = it },
+                        onOptimizePrompt = { onOptimizePrompt(questionInputText.text) },
+                        isOptimizingPrompt = isOptimizingPrompt,
+                        speechSupported = speechSupported,
+                        isSpeechListening = isSpeechListening,
+                        onToggleSpeechInput = {
+                            val stt = speechToText
+                            if (stt != null) {
+                                scope.launch {
+                                    if (isSpeechListening) {
+                                        isSpeechListening = false
+                                        stt.stopListening().onSuccess { text ->
+                                            if (text.isNotBlank()) {
+                                                questionInputText = TextFieldValue(questionInputText.text + text)
+                                            }
+                                        }
+                                    } else {
+                                        isSpeechListening = true
+                                        val lang = if (questionInputText.text.any { it.code > 127 }) "zh" else "en"
+                                        stt.startListening(lang).onFailure {
+                                            isSpeechListening = false
+                                        }
+                                    }
+                                }
+                            }
+                        },
                     )
                 }
                 1 -> {
@@ -103,10 +160,10 @@ internal fun CollaborationWizardSheet(
                     if (step < 2) {
                         Button(
                             onClick = {
-                                if (step == 0 && question.isBlank()) return@Button
+                                if (step == 0 && questionInputText.text.isBlank()) return@Button
                                 step += 1
                             },
-                            enabled = step != 0 || question.isNotBlank(),
+                            enabled = step != 0 || questionInputText.text.isNotBlank(),
                         ) { Text("下一步") }
                     } else {
                         Button(
@@ -114,12 +171,13 @@ internal fun CollaborationWizardSheet(
                                 val minScore = minScoreText.toDoubleOrNull() ?: 0.0
                                 onStart(
                                     CollaborationWizardParams(
-                                        question = question.trim(),
+                                        question = questionInputText.text.trim(),
                                         minScoreThreshold = minScore,
                                         maxWaitSeconds = maxWait.coerceAtLeast(1),
                                         retryCount = retryCount.coerceAtLeast(0),
                                         notifyOnFailure = notifyFailure,
                                         notifyOnComplete = notifyComplete,
+                                        attachedFiles = wizardFiles.toList(),
                                     ),
                                 )
                             },

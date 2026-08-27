@@ -168,6 +168,8 @@ kotlin {
                 implementation(libs.slf4j.nop)
                 implementation(libs.litert.lm.jvm)
                 implementation(libs.sqldelight.sqlite.driver)
+                implementation(libs.jna)
+                implementation(libs.jna.platform)
             }
         }
         iosMain.dependencies {

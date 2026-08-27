@@ -2219,21 +2219,22 @@ class RemoteDataRepository(
         modelId: String,
         question: String,
         timeoutMs: Long,
+        files: List<PlatformFile>,
     ): String {
         val conversation = savedConversations.value.find { it.id == conversationId } ?: return ""
         val localHistory = MutableStateFlow(conversation.messages.map { messageToHistory(it) })
+        val attachments = buildAttachmentsFromFiles(files).toImmutableList()
         val needsUserMessage = localHistory.value.lastOrNull()?.let { last ->
             last.role != History.Role.USER || last.content != question
         } ?: true
         if (needsUserMessage) {
             localHistory.update { history ->
                 history.toMutableList().apply {
-                    add(History(role = History.Role.USER, content = question))
+                    add(History(role = History.Role.USER, content = question, attachments = attachments))
                 }
             }
         }
-        val instance = getConfiguredServiceInstances().find { it.instanceId == instanceId } ?: return ""
-        val service = Service.fromId(instance.serviceId)
+        val service = serviceForInstanceId(instanceId) ?: return ""
         val systemPrompt = getActiveSystemPrompt()
 
         suspend fun execute(): String = withContext(ConversationIdElement(conversationId)) {
@@ -2268,6 +2269,29 @@ class RemoteDataRepository(
 
         persistConversationHistory(conversationId, localHistory.value, conversation)
         return content
+    }
+
+    private fun serviceForInstanceId(instanceId: String): Service? {
+        if (instanceId == "free") return Service.Free
+        val instance = getConfiguredServiceInstances().find { it.instanceId == instanceId } ?: return null
+        return Service.fromId(instance.serviceId)
+    }
+
+    private suspend fun buildAttachmentsFromFiles(files: List<PlatformFile>): List<Attachment> = files.flatMap { file ->
+        if (file.isDirectory()) {
+            val collected = mutableListOf<Attachment>()
+            suspend fun walk(current: PlatformFile) {
+                if (current.isDirectory()) {
+                    runCatching { current.list() }.getOrDefault(emptyList()).forEach { walk(it) }
+                } else {
+                    runCatching { fileToAttachmentOrNull(current) }.getOrNull()?.let { collected.add(it) }
+                }
+            }
+            walk(file)
+            collected
+        } else {
+            listOf(fileToAttachmentOrThrow(file))
+        }
     }
 
     override suspend fun retryCollaborationModel(conversationId: String, timeoutMs: Long): String {

@@ -179,6 +179,6 @@ object ShellCommandTool : Tool {
         description = "Execute a shell command on the device",
         nameRes = Res.string.tool_execute_shell_command_name,
         descriptionRes = Res.string.tool_execute_shell_command_description,
-        isEnabled = false,
+        isEnabled = true,
     )
 }

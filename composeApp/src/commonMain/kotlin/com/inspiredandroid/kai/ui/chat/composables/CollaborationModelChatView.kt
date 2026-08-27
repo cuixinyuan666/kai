@@ -52,13 +52,22 @@ internal fun CollaborationModelChatView(
     hasNextModel: Boolean,
     onPrevModel: () -> Unit,
     onNextModel: () -> Unit,
+    modelBenchmarks: Map<String, Double> = emptyMap(),
+    serviceIdForModel: String? = null,
 ) {
     val copyToClipboard = rememberCopyToClipboard()
     val question = conversation.metadata().collaborationQuestion
         ?: conversation.messages.firstOrNull { it.role == "user" }?.content.orEmpty()
     val answer = conversation.messages.lastOrNull { it.role == "assistant" }?.content.orEmpty()
-    var score by remember(conversation.metadata().userScore) {
-        mutableFloatStateOf((conversation.metadata().userScore?.toFloat() ?: 50f))
+    val meta = conversation.metadata()
+    val benchmarkKey = if (serviceIdForModel != null && meta.modelId != null) {
+        "$serviceIdForModel::${meta.modelId}"
+    } else {
+        null
+    }
+    val configuredScore = meta.userScore ?: benchmarkKey?.let { modelBenchmarks[it] }
+    var score by remember(meta.userScore, benchmarkKey, modelBenchmarks) {
+        mutableFloatStateOf((configuredScore?.toFloat() ?: 0f))
     }
 
     Row(

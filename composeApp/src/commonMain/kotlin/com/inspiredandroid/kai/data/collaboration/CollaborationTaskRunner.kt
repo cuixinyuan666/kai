@@ -85,6 +85,7 @@ class CollaborationTaskRunner(
                         conversationId = convId,
                         ref = ref,
                         prompt = params.question,
+                        files = params.attachedFiles,
                         retryCount = params.retryCount,
                         timeoutMs = timeoutMs,
                         label = label,
@@ -191,6 +192,7 @@ class CollaborationTaskRunner(
         conversationId: String,
         ref: ModelRef,
         prompt: String,
+        files: List<io.github.vinceglb.filekit.PlatformFile>,
         retryCount: Int,
         timeoutMs: Long,
         label: String,
@@ -205,6 +207,7 @@ class CollaborationTaskRunner(
                     modelId = ref.modelId,
                     question = prompt,
                     timeoutMs = timeoutMs,
+                    files = files,
                 )
                 if (result.isNotBlank()) return result
             } catch (_: Exception) {

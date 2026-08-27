@@ -66,6 +66,7 @@ data class CollaborationWizardParams(
     val retryCount: Int,
     val notifyOnFailure: Boolean,
     val notifyOnComplete: Boolean,
+    val attachedFiles: List<io.github.vinceglb.filekit.PlatformFile> = emptyList(),
 )
 
 /**

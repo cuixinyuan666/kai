@@ -1,7 +1,8 @@
 [versions]
 agp = "9.3.1"
-appVersion = "3.5.0"
-android-versionCode = "117"
+appVersion = "3.5.1"
+jna = "5.16.0"
+android-versionCode = "118"
 android-compileSdk = "37"
 android-minSdk = "26"
 android-targetSdk = "37"
@@ -90,6 +91,8 @@ compose-ui-tooling = { module = "org.jetbrains.compose.ui:ui-tooling", version.r
 bouncycastle-provider = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 # LXC Debian rootfs for Kai Build ships as .tar.xz
 xz = { module = "org.tukaani:xz", version.ref = "xz" }
+jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 litert-lm = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litert-lm" }
 litert-lm-jvm = { module = "com.google.ai.edge.litertlm:litertlm-jvm", version.ref = "litert-lm" }

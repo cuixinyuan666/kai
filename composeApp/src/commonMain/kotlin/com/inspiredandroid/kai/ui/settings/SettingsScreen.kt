@@ -277,10 +277,6 @@ fun SettingsScreenContent(
                                 )
                             }
 
-                            SettingsTab.Integrations -> {
-                                IntegrationsContent()
-                            }
-
                             SettingsTab.Tools -> {
                                 ToolsContent(
                                     tools = filteredUiState.tools,
@@ -399,7 +395,6 @@ private fun SettingsTabSelector(
                             SettingsTab.Services -> stringResource(Res.string.settings_tab_services)
                             SettingsTab.Tools -> stringResource(Res.string.settings_tab_tools)
                             SettingsTab.Sandbox -> stringResource(Res.string.settings_tab_sandbox)
-                            SettingsTab.Integrations -> stringResource(Res.string.settings_tab_integrations)
                         },
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         color = MaterialTheme.colorScheme.primary,
