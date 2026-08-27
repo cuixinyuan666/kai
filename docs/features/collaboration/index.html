@@ -703,10 +703,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#roles" class="md-nav__link">
+  <a href="#eligibility" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Roles
+        Eligibility
       
     </span>
   </a>
@@ -714,10 +714,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#isolated-sessions" class="md-nav__link">
+  <a href="#round-1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Isolated sessions
+        Round 1
       
     </span>
   </a>
@@ -725,10 +725,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dialogue-flow-per-session" class="md-nav__link">
+  <a href="#follow-up-rounds" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Dialogue flow (per session)
+        Follow-up rounds
       
     </span>
   </a>
@@ -736,10 +736,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#session-termination" class="md-nav__link">
+  <a href="#settings" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Session termination
+        Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#copy-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Copy all
       
     </span>
   </a>
@@ -797,58 +808,61 @@
 
 
 <h1 id="collaboration-mode">Collaboration Mode</h1>
-<p><strong>Last verified:</strong> 2026-08-26</p>
-<p>Collaboration mode runs a multi-model workflow on a single user question. <strong>Task parties</strong> and <strong>supervisors</strong> converse directly—there is no transmitter or feedback role. For each task party and each supervisor, the app creates an <strong>isolated chat session</strong> with its own history (e.g. task 1 with supervisor 1, task 1 with supervisor 2, …). Windows (desktop) and Android share the same implementation in <code>composeApp</code> common code.</p>
-<h2 id="roles">Roles</h2>
+<p><strong>Last verified:</strong> 2026-08-27</p>
+<p>Collaboration mode sends the <strong>same user instruction in parallel</strong> to every configured model whose <strong>model-test total score is strictly greater than 0</strong>. There are no task-party or supervisor roles—each model answers independently. Windows (desktop) and Android share the same implementation in <code>composeApp</code> common code.</p>
+<h2 id="eligibility">Eligibility</h2>
+<p>Only models with benchmark <strong>total score &gt; 0</strong> participate. Run <strong>模型测试</strong> in Settings first; models that fail the probe (no response) receive <strong>0</strong> and are excluded.</p>
+<h2 id="round-1">Round 1</h2>
+<p>The user question is sent identically to all eligible models in parallel.</p>
+<h2 id="follow-up-rounds">Follow-up rounds</h2>
+<p>After a round completes, if at least one model succeeded, the user can tap <strong>下一轮</strong>. Only models that <strong>successfully answered in the previous round</strong> receive the next prompt, formatted as:</p>
+<div class="highlight"><pre><span></span><code>【原始问题】
+{question}
+
+【你上一次的回答】
+{previous answer}
+
+【审阅要求】
+请审阅你上一次的回答是否存在问题。若存在问题请说明并修正你的回答；若认为没有问题请明确回复「没有问题」。
+</code></pre></div>
+<p>Users may continue for unlimited rounds while successful models remain.</p>
+<h2 id="settings">Settings</h2>
 <table>
 <thead>
 <tr>
-<th>Role</th>
-<th>Count</th>
-<th>Responsibility</th>
+<th>Parameter</th>
+<th>Default</th>
+<th>Purpose</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Task party</td>
-<td>One or more</td>
-<td>Answer the user question; respond to supervisor questions in dialogue</td>
+<td>Max wait (seconds)</td>
+<td>60</td>
+<td>Per-model call timeout</td>
 </tr>
 <tr>
-<td>Supervisor</td>
-<td>One or more</td>
-<td>Review task-party answers; ask follow-up questions per isolated session</td>
+<td>Retry count</td>
+<td>2</td>
+<td>Retries after failure</td>
+</tr>
+<tr>
+<td>Model system prompt</td>
+<td>built-in default</td>
+<td>System prompt for all models</td>
 </tr>
 </tbody>
 </table>
-<p>Role assignment can be <strong>manual</strong> (pick models in Settings → Collaboration) or <strong>score-gated</strong> (only benchmark-qualified models participate; task/supervisor split by ratio).</p>
-<h2 id="isolated-sessions">Isolated sessions</h2>
-<p>If you configure 2 task parties and 3 supervisors, the orchestrator creates <strong>6 independent sessions</strong>:</p>
-<ul>
-<li>Task 1 ↔ Supervisor 1, Task 1 ↔ Supervisor 2, Task 1 ↔ Supervisor 3</li>
-<li>Task 2 ↔ Supervisor 1, Task 2 ↔ Supervisor 2, Task 2 ↔ Supervisor 3</li>
-</ul>
-<p>Messages in one session never mix with another.</p>
-<h2 id="dialogue-flow-per-session">Dialogue flow (per session)</h2>
-<ol>
-<li>The task party submits an answer to the supervisor.</li>
-<li>The supervisor reviews and asks questions.</li>
-<li>The system relays to the task party:<br />
-<code>针对你的上次回答，监督方提出的问题是：XXX，你对此的回答是什么？</code></li>
-<li>The task party replies; the system relays to the supervisor:<br />
-<code>针对你的上一次疑问，任务方的回答是：XXX，你对此还有哪些疑问？</code></li>
-<li>Steps 2–4 repeat until the supervisor sends a termination phrase or <code>maxRounds</code> is reached.</li>
-</ol>
-<h2 id="session-termination">Session termination</h2>
-<p>The orchestrator scans supervisor replies for end-of-dialogue keywords such as <strong>没有问题</strong>, <strong>可以完成</strong>, <strong>确认</strong>, <strong>没有疑问</strong>, etc. When <code>autoStopOnConfirm</code> is enabled (default), matching replies end that session automatically.</p>
+<h2 id="copy-all">Copy all</h2>
+<p><strong>一键复制</strong> exports the user question plus every round’s model replies (multi-round content).</p>
 <h2 id="chat-visibility">Chat visibility</h2>
 <ul>
-<li>The user question is stored in chat history and shown at the top of the collaboration panel.</li>
-<li><strong>Overview</strong> shows all sessions; each <strong>session tab</strong> filters to that task party × supervisor pair.</li>
-<li>When collaboration finishes, a summary is appended to chat history as an assistant message.</li>
+<li>The user question appears at the top of the collaboration panel.</li>
+<li><strong>Overview</strong> shows all models; each <strong>model tab</strong> filters to that model’s events.</li>
+<li>Each round’s summary is appended to chat history as an assistant message.</li>
 </ul>
 <h2 id="release-builds">Release builds</h2>
-<p>Tagged releases (<code>v*</code>) publish <strong>Windows</strong> (<code>.zip</code> portable + <code>.msi</code>) and <strong>Android</strong> (<code>.apk</code>) to GitHub Releases via <code>.github/workflows/release.yml</code>.</p>
+<p>Tagged releases (<code>v*</code>) publish Windows (<code>.zip</code> portable + <code>.msi</code>) and Android (<code>.apk</code>) to GitHub Releases via <code>.github/workflows/release.yml</code>.</p>
 <h2 id="key-files">Key Files</h2>
 <table>
 <thead>
@@ -860,23 +874,19 @@
 <tbody>
 <tr>
 <td><code>composeApp/src/commonMain/.../data/collaboration/CollaborationModel.kt</code></td>
-<td>Config, events, relay format helpers</td>
+<td>Config, events, follow-up and copy helpers</td>
 </tr>
 <tr>
 <td><code>composeApp/src/commonMain/.../data/collaboration/CollaborationOrchestrator.kt</code></td>
-<td>Per-session dialogue engine</td>
-</tr>
-<tr>
-<td><code>composeApp/src/commonMain/.../data/collaboration/CollaborationExtractors.kt</code></td>
-<td>Termination keyword detection</td>
+<td>Parallel broadcast and multi-round engine</td>
 </tr>
 <tr>
 <td><code>composeApp/src/commonMain/.../ui/chat/composables/CollaborationPanel.kt</code></td>
-<td>Overview + per-session views</td>
+<td>Overview, per-model views, copy, next round</td>
 </tr>
 <tr>
 <td><code>composeApp/src/commonMain/.../ui/settings/CollaborationSettings.kt</code></td>
-<td>Role and prompt configuration</td>
+<td>Timeout and prompt configuration</td>
 </tr>
 <tr>
 <td><code>.github/workflows/release.yml</code></td>
