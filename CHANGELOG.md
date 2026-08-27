@@ -1,3 +1,9 @@
+## v3.3.1 — 2026-08-27
+
+### Fixes
+- GitHub Release: do not fail when Windows zip is already named `Kai-<version>-windows.zip`
+- GitHub Release: WinGet publish is optional so missing `WINGET_TOKEN` does not block the Release
+
 ## v3.3.0 — 2026-08-27
 
 ### Features

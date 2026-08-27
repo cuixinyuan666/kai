@@ -423,16 +423,40 @@ jobs:
 
       - name: Rename assets
         run: |
+          set -euo pipefail
           VERSION="${RELEASE_TAG#v}"
-          mv androidApp-foss-release-signed.apk "Kai-${VERSION}-android.apk"
-          mv *.dmg "Kai-${VERSION}-macos.dmg"
-          mv *.msi "Kai-${VERSION}-windows.msi"
-          mv *-windows.zip "Kai-${VERSION}-windows.zip"
-          mv *.deb "Kai-${VERSION}-linux.deb"
-          mv *.rpm "Kai-${VERSION}-linux.rpm"
-          mv *.AppImage "Kai-${VERSION}-linux.AppImage"
-          mv Kai-linux-x86_64.tar.gz "Kai-${VERSION}-linux-x86_64.tar.gz"
-          mv Kai.flatpak "Kai-${VERSION}-linux.flatpak"
+          shopt -s nullglob
+          # Idempotent rename: skip when the destination already exists
+          # (Windows zip is already named Kai-${VERSION}-windows.zip).
+          move_to() {
+            local dest="$1"
+            shift
+            if [ -e "$dest" ]; then
+              echo "Already present: $dest"
+              return 0
+            fi
+            local src
+            for src in "$@"; do
+              if [ -f "$src" ]; then
+                mv "$src" "$dest"
+                echo "Moved $src -> $dest"
+                return 0
+              fi
+            done
+            echo "ERROR: no source for $dest (tried: $*)"
+            ls -la
+            return 1
+          }
+          move_to "Kai-${VERSION}-android.apk" androidApp-foss-release-signed.apk
+          move_to "Kai-${VERSION}-macos.dmg" *.dmg
+          move_to "Kai-${VERSION}-windows.msi" *.msi
+          move_to "Kai-${VERSION}-windows.zip" *-windows.zip
+          move_to "Kai-${VERSION}-linux.deb" *.deb
+          move_to "Kai-${VERSION}-linux.rpm" *.rpm
+          move_to "Kai-${VERSION}-linux.AppImage" *.AppImage
+          move_to "Kai-${VERSION}-linux-x86_64.tar.gz" Kai-linux-x86_64.tar.gz
+          move_to "Kai-${VERSION}-linux.flatpak" Kai.flatpak
+          ls -la Kai-*
 
       - name: Extract changelog
         run: |
@@ -459,11 +483,18 @@ jobs:
           files: Kai-*
 
       - name: Sync winget-pkgs fork
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
-        run: gh repo sync SimonSchubert/winget-pkgs --source microsoft/winget-pkgs --branch master --force
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "WINGET_TOKEN not set; skip WinGet sync"
+            exit 0
+          fi
+          gh repo sync SimonSchubert/winget-pkgs --source microsoft/winget-pkgs --branch master --force
 
       - name: Publish to WinGet
+        continue-on-error: true
         uses: vedantmgoyal9/winget-releaser@v2
         with:
           identifier: SimonSchubert.Kai
