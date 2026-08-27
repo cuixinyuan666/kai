@@ -1,4 +1,4 @@
-CREATE TABLE conversationEntity (
+CREATE TABLE IF NOT EXISTS conversationEntity (
     id TEXT NOT NULL PRIMARY KEY,
     title TEXT NOT NULL,
     type TEXT NOT NULL,
@@ -7,9 +7,12 @@ CREATE TABLE conversationEntity (
     shellTranscriptJson TEXT NOT NULL
 );
 
-CREATE TABLE messageEntity (
+CREATE TABLE IF NOT EXISTS messageEntity (
     conversationId TEXT NOT NULL,
     orderIndex INTEGER NOT NULL,
     messageJson TEXT NOT NULL,
     PRIMARY KEY (conversationId, orderIndex)
 );
+
+ALTER TABLE conversationEntity ADD COLUMN parentId TEXT;
+ALTER TABLE conversationEntity ADD COLUMN metadataJson TEXT NOT NULL DEFAULT '';

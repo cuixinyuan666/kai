@@ -1,2 +1,0 @@
-ALTER TABLE conversationEntity ADD COLUMN parentId TEXT;
-ALTER TABLE conversationEntity ADD COLUMN metadataJson TEXT NOT NULL DEFAULT '';
