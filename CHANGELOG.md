@@ -1,3 +1,8 @@
+## v3.4.1 — 2026-08-27
+
+### Fixes
+- SQLite migration: use `CREATE TABLE IF NOT EXISTS` so upgrading from v3.4.0 does not crash on existing conversation databases (fixes ChatViewModel / Koin startup failure)
+
 ## v3.4.0 — 2026-08-27
 
 ### Features
