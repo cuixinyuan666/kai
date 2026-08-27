@@ -1,3 +1,16 @@
+## v3.4.0 — 2026-08-27
+
+### Features
+- Collaboration mode wizard: question → score threshold → run parameters → start
+- Each eligible model runs as an isolated single-mode pipeline (tools, memory, plan)
+- Chat history tree: **单一模式** / **协作模式** → task folders (`2026-02-20-任务1`) → per-model folders (`opencode-hy3`)
+- WeChat-style per-model view with copy, retry, and score slider; status colors for running / done / failed
+- Folder-level copy buttons with formatted traversal text
+
+### Changes
+- Removed collaboration overview panel, custom system prompt, and settings-page model scoring
+- GitHub Release publishes **Windows portable zip only**
+
 ## v3.3.1 — 2026-08-27
 
 ### Fixes
