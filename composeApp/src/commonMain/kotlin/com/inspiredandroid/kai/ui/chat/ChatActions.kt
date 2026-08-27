@@ -30,11 +30,19 @@ data class ChatActions(
     val sendSmsDraft: (String) -> Unit,
     val discardSmsDraft: (String) -> Unit,
     // 协作模式
-    val toggleChatMode: () -> Unit,
-    val startCollaboration: (String) -> Unit,
-    val continueCollaborationRound: () -> Unit,
+    val openCollaborationWizard: () -> Unit,
+    val dismissCollaborationWizard: () -> Unit,
+    val startCollaborationTask: (com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams) -> Unit,
     val stopCollaboration: () -> Unit,
     val clearCollaborationNotification: () -> Unit,
+    val openCollaborationModelView: (String) -> Unit,
+    val closeCollaborationModelView: () -> Unit,
+    val openHistoryFolder: (String) -> Unit,
+    val closeHistoryFolder: () -> Unit,
+    val copyConversationBranch: (String, Int) -> Unit,
+    val clearPendingCopyText: () -> Unit,
+    val retryCollaborationModel: (String) -> Unit,
+    val setCollaborationModelScore: (String, Double) -> Unit,
     /** 用户消息“重新发送”：截断到该消息之前，再以原文重新提问。 */
     val resendUserMessage: (messageId: String, text: String) -> Unit,
 )

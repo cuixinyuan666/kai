@@ -5,6 +5,7 @@ import com.inspiredandroid.kai.TerminalLine
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 
 /**
  * A single file attachment on a chat message. Used both in-memory on `History` and
@@ -27,11 +28,21 @@ data class Conversation(
     val title: String = "",
     val type: String = TYPE_CHAT,
     val shellTranscript: List<TerminalLine> = emptyList(),
+    val parentId: String? = null,
+    val metadataJson: String = "",
 ) {
     companion object {
         const val TYPE_CHAT = "chat"
         const val TYPE_HEARTBEAT = "heartbeat"
         const val TYPE_INTERACTIVE = "interactive"
+        const val TYPE_FOLDER = "folder"
+        const val TYPE_COLLABORATION_TASK = "collaboration_task"
+        const val TYPE_COLLABORATION_MODEL = "collaboration_model"
+
+        const val FOLDER_SINGLE_MODE_ID = "folder-single-mode"
+        const val FOLDER_COLLABORATION_MODE_ID = "folder-collaboration-mode"
+        const val FOLDER_SINGLE_MODE_TITLE = "单一模式"
+        const val FOLDER_COLLABORATION_MODE_TITLE = "协作模式"
     }
 
     @OptIn(ExperimentalSerializationApi::class)
@@ -70,6 +81,39 @@ data class UiSubmission(
 
 @Serializable
 data class ConversationsData(
-    val version: Int = 2,
+    val version: Int = 3,
     val conversations: List<Conversation>,
 )
+
+/** 协作会话元数据，序列化在 [Conversation.metadataJson]。 */
+@Serializable
+data class ConversationMetadata(
+    val collaborationQuestion: String? = null,
+    val instanceId: String? = null,
+    val modelId: String? = null,
+    val status: String? = null,
+    val userScore: Double? = null,
+    val minScoreThreshold: Double? = null,
+    val maxWaitSeconds: Int? = null,
+    val retryCount: Int? = null,
+    val notifyOnFailure: Boolean? = null,
+    val notifyOnComplete: Boolean? = null,
+)
+
+enum class CollaborationModelStatus {
+    RUNNING,
+    COMPLETED,
+    FAILED,
+}
+
+fun Conversation.metadata(): ConversationMetadata = try {
+    if (metadataJson.isBlank()) ConversationMetadata()
+    else SharedJson.decodeFromString<ConversationMetadata>(metadataJson)
+} catch (_: Exception) {
+    ConversationMetadata()
+}
+
+fun Conversation.withMetadata(metadata: ConversationMetadata): Conversation =
+    copy(metadataJson = SharedJson.encodeToString(metadata))
+
+fun ConversationMetadata.encode(): String = SharedJson.encodeToString(this)

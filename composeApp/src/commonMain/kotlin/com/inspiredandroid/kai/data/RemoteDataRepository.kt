@@ -7,6 +7,8 @@ import com.inspiredandroid.kai.compressImageBytes
 import com.inspiredandroid.kai.currentPlatform
 import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.collaboration.CollaborationConfig
+import com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams
+import com.inspiredandroid.kai.data.collaboration.ModelRef
 import com.inspiredandroid.kai.data.providers.buildAnthropicMessages
 import com.inspiredandroid.kai.data.providers.buildOpenAIMessages
 import com.inspiredandroid.kai.email.EmailPoller
@@ -74,6 +76,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.offsetAt
 import kotlinx.datetime.toLocalDateTime
@@ -674,6 +677,8 @@ class RemoteDataRepository(
         systemPrompt: String?,
         instanceId: String,
         history: MutableStateFlow<List<History>> = chatHistory,
+        modelIdOverride: String? = null,
+        requestTimeoutMs: Long? = null,
     ): AssistantTurn {
         if (service.isOnDevice) {
             // No retry: local-inference failures are deterministic, and this path mutates
@@ -685,11 +690,13 @@ class RemoteDataRepository(
             return AssistantTurn(askWithLocalEngine(messages, localPrompt, instanceId, history))
         }
 
-        val creds = instanceCredentials(instanceId, service)
+        val creds = instanceCredentials(instanceId, service).let { base ->
+            if (modelIdOverride != null) base.copy(modelId = modelIdOverride) else base
+        }
         val tools = if (supportsTools(creds.modelId)) getAvailableTools() else emptyList()
 
         if (tools.isEmpty()) {
-            return plainChat(service, creds, messages, systemPrompt, strictEmptyResponse = true)
+            return plainChat(service, creds, messages, systemPrompt, requestTimeoutMs = requestTimeoutMs, strictEmptyResponse = true)
         }
 
         return when (service) {
@@ -1561,6 +1568,8 @@ class RemoteDataRepository(
             updatedAt = now,
             title = title,
             type = existingConversation?.type ?: if (interactiveModeFlag) Conversation.TYPE_INTERACTIVE else Conversation.TYPE_CHAT,
+            parentId = existingConversation?.parentId ?: Conversation.FOLDER_SINGLE_MODE_ID,
+            metadataJson = existingConversation?.metadataJson ?: "",
         )
 
         conversationStorage.saveConversation(conversation)
@@ -1605,6 +1614,10 @@ class RemoteDataRepository(
     // Conversation management
     override fun loadConversations() {
         conversationStorage.loadConversations()
+        val ensured = ConversationFolderManager.ensureHierarchy(conversationStorage.conversations.value)
+        if (ensured != conversationStorage.conversations.value) {
+            conversationStorage.replaceAll(ensured)
+        }
     }
 
     override fun loadConversation(id: String) {
@@ -2192,6 +2205,218 @@ class RemoteDataRepository(
             requestTimeoutMs = timeoutMs.takeIf { it > 0 },
             retry = false,
         ).content
+    }
+
+    override suspend fun askInConversation(
+        conversationId: String,
+        instanceId: String,
+        modelId: String,
+        question: String,
+        timeoutMs: Long,
+    ): String {
+        val conversation = savedConversations.value.find { it.id == conversationId } ?: return ""
+        val localHistory = MutableStateFlow(conversation.messages.map { messageToHistory(it) })
+        val needsUserMessage = localHistory.value.lastOrNull()?.let { last ->
+            last.role != History.Role.USER || last.content != question
+        } ?: true
+        if (needsUserMessage) {
+            localHistory.update { history ->
+                history.toMutableList().apply {
+                    add(History(role = History.Role.USER, content = question))
+                }
+            }
+        }
+        val instance = getConfiguredServiceInstances().find { it.instanceId == instanceId } ?: return ""
+        val service = Service.fromId(instance.serviceId)
+        val systemPrompt = getActiveSystemPrompt()
+
+        suspend fun execute(): String = withContext(ConversationIdElement(conversationId)) {
+            val turn = askWithService(
+                service = service,
+                messages = localHistory.value,
+                systemPrompt = systemPrompt,
+                instanceId = instanceId,
+                history = localHistory,
+                modelIdOverride = modelId,
+                requestTimeoutMs = timeoutMs.takeIf { it > 0 },
+            )
+            localHistory.update { history ->
+                history.toMutableList().apply {
+                    add(
+                        History(
+                            role = History.Role.ASSISTANT,
+                            content = turn.content,
+                            reasoningContent = turn.reasoningContent,
+                        ),
+                    )
+                }
+            }
+            turn.content
+        }
+
+        val content = if (timeoutMs > 0) {
+            withTimeoutOrNull(timeoutMs) { execute() } ?: ""
+        } else {
+            execute()
+        }
+
+        persistConversationHistory(conversationId, localHistory.value, conversation)
+        return content
+    }
+
+    override suspend fun retryCollaborationModel(conversationId: String, timeoutMs: Long): String {
+        val conversation = savedConversations.value.find { it.id == conversationId } ?: return ""
+        val meta = conversation.metadata()
+        val question = meta.collaborationQuestion ?: conversation.messages.firstOrNull { it.role == "user" }?.content.orEmpty()
+        val instanceId = meta.instanceId ?: return ""
+        val modelId = meta.modelId ?: return ""
+        val trimmed = conversation.messages.toMutableList()
+        while (trimmed.isNotEmpty()) {
+            val last = trimmed.last()
+            if (last.role == "assistant" || last.role == "tool") {
+                trimmed.removeAt(trimmed.lastIndex)
+            } else {
+                break
+            }
+        }
+        val cleared = conversation.copy(
+            messages = trimmed,
+            updatedAt = Clock.System.now().toEpochMilliseconds(),
+            metadataJson = meta.copy(status = CollaborationModelStatus.RUNNING.name).encode(),
+        )
+        conversationStorage.saveConversation(cleared)
+        updateCollaborationModelStatus(conversationId, CollaborationModelStatus.RUNNING, null)
+        return askInConversation(conversationId, instanceId, modelId, question, timeoutMs)
+    }
+
+    override fun setCollaborationModelUserScore(conversationId: String, score: Double) {
+        val conversation = savedConversations.value.find { it.id == conversationId } ?: return
+        val updated = conversation.withMetadata(conversation.metadata().copy(userScore = score))
+        conversationStorage.saveConversation(updated)
+    }
+
+    override suspend fun createCollaborationTask(question: String, params: CollaborationWizardParams): String {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val title = ConversationFolderManager.nextTaskFolderTitle(savedConversations.value, now)
+        val id = Uuid.random().toString()
+        val metadata = ConversationMetadata(
+            collaborationQuestion = question,
+            minScoreThreshold = params.minScoreThreshold,
+            maxWaitSeconds = params.maxWaitSeconds,
+            retryCount = params.retryCount,
+            notifyOnFailure = params.notifyOnFailure,
+            notifyOnComplete = params.notifyOnComplete,
+            status = CollaborationModelStatus.RUNNING.name,
+        )
+        val task = Conversation(
+            id = id,
+            messages = emptyList(),
+            createdAt = now,
+            updatedAt = now,
+            title = title,
+            type = Conversation.TYPE_COLLABORATION_TASK,
+            parentId = Conversation.FOLDER_COLLABORATION_MODE_ID,
+            metadataJson = metadata.encode(),
+        )
+        conversationStorage.saveConversation(task)
+        return id
+    }
+
+    override suspend fun createCollaborationModelConversation(
+        taskId: String,
+        ref: ModelRef,
+        folderTitle: String,
+        question: String,
+        params: CollaborationWizardParams,
+    ): String {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val id = Uuid.random().toString()
+        val metadata = ConversationMetadata(
+            collaborationQuestion = question,
+            instanceId = ref.instanceId,
+            modelId = ref.modelId,
+            status = CollaborationModelStatus.RUNNING.name,
+            minScoreThreshold = params.minScoreThreshold,
+            maxWaitSeconds = params.maxWaitSeconds,
+            retryCount = params.retryCount,
+            notifyOnFailure = params.notifyOnFailure,
+            notifyOnComplete = params.notifyOnComplete,
+        )
+        val conversation = Conversation(
+            id = id,
+            messages = emptyList(),
+            createdAt = now,
+            updatedAt = now,
+            title = folderTitle,
+            type = Conversation.TYPE_COLLABORATION_MODEL,
+            parentId = taskId,
+            metadataJson = metadata.encode(),
+        )
+        conversationStorage.saveConversation(conversation)
+        return id
+    }
+
+    override fun updateCollaborationModelStatus(
+        conversationId: String,
+        status: CollaborationModelStatus,
+        response: String?,
+    ) {
+        val conversation = savedConversations.value.find { it.id == conversationId } ?: return
+        val meta = conversation.metadata().copy(status = status.name)
+        val updated = conversation.withMetadata(meta).copy(updatedAt = Clock.System.now().toEpochMilliseconds())
+        conversationStorage.saveConversation(updated)
+    }
+
+    private fun messageToHistory(m: Conversation.Message): History {
+        val attachments = when {
+            m.attachments.isNotEmpty() -> m.attachments.toImmutableList()
+            m.data != null && m.mimeType != null ->
+                persistentListOf(Attachment(data = m.data, mimeType = m.mimeType, fileName = m.fileName))
+            else -> persistentListOf()
+        }
+        return History(
+            id = m.id,
+            role = when (m.role) {
+                "user" -> History.Role.USER
+                "tool" -> History.Role.TOOL
+                else -> History.Role.ASSISTANT
+            },
+            content = m.content,
+            attachments = attachments,
+            uiSubmission = m.uiSubmission,
+            isThinking = m.isThinking,
+            reasoningContent = m.reasoningContent,
+        )
+    }
+
+    private fun persistConversationHistory(
+        conversationId: String,
+        history: List<History>,
+        existing: Conversation,
+    ) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val conversation = existing.copy(
+            messages = history
+                .filter { it.role != History.Role.TOOL_EXECUTING }
+                .map { h ->
+                    Conversation.Message(
+                        id = h.id,
+                        role = when (h.role) {
+                            History.Role.USER -> "user"
+                            History.Role.ASSISTANT -> "assistant"
+                            History.Role.TOOL -> "tool"
+                            History.Role.TOOL_EXECUTING -> "tool"
+                        },
+                        content = h.content,
+                        attachments = h.attachments,
+                        uiSubmission = h.uiSubmission,
+                        isThinking = h.isThinking,
+                        reasoningContent = h.reasoningContent,
+                    )
+                },
+            updatedAt = now,
+        )
+        conversationStorage.saveConversation(conversation)
     }
 
     override fun getChatMode(): ChatMode = appSettings.getChatMode()

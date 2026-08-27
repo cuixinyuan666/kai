@@ -13,7 +13,9 @@ CREATE TABLE conversationEntity (
     type TEXT NOT NULL,
     createdAt INTEGER NOT NULL,
     updatedAt INTEGER NOT NULL,
-    shellTranscriptJson TEXT NOT NULL
+    shellTranscriptJson TEXT NOT NULL,
+    parentId TEXT,
+    metadataJson TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE messageEntity (
@@ -30,8 +32,8 @@ selectAllMessages:
 SELECT * FROM messageEntity ORDER BY conversationId, orderIndex;
 
 upsertConversation:
-INSERT OR REPLACE INTO conversationEntity (id, title, type, createdAt, updatedAt, shellTranscriptJson)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO conversationEntity (id, title, type, createdAt, updatedAt, shellTranscriptJson, parentId, metadataJson)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 updateShellTranscript:
 UPDATE conversationEntity SET shellTranscriptJson = ? WHERE id = ?;

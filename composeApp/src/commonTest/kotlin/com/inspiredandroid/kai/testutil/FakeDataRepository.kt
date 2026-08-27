@@ -510,6 +510,37 @@ class FakeDataRepository : DataRepository {
         timeoutMs: Long,
     ): String = ""
 
+    override suspend fun askInConversation(
+        conversationId: String,
+        instanceId: String,
+        modelId: String,
+        question: String,
+        timeoutMs: Long,
+    ): String = ""
+
+    override suspend fun retryCollaborationModel(conversationId: String, timeoutMs: Long): String = ""
+
+    override fun setCollaborationModelUserScore(conversationId: String, score: Double) {}
+
+    override suspend fun createCollaborationTask(
+        question: String,
+        params: com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams,
+    ): String = "fake-task"
+
+    override suspend fun createCollaborationModelConversation(
+        taskId: String,
+        ref: com.inspiredandroid.kai.data.collaboration.ModelRef,
+        folderTitle: String,
+        question: String,
+        params: com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams,
+    ): String = "fake-model"
+
+    override fun updateCollaborationModelStatus(
+        conversationId: String,
+        status: com.inspiredandroid.kai.data.CollaborationModelStatus,
+        response: String?,
+    ) {}
+
     override fun getChatMode(): ChatMode = ChatMode.SINGLE
     override fun setChatMode(mode: ChatMode) {}
     override fun getCollaborationConfig(): CollaborationConfig = CollaborationConfig()

@@ -9,6 +9,8 @@ import com.inspiredandroid.kai.inference.ModelImportResult
 import com.inspiredandroid.kai.linux.LinuxDistro
 import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.collaboration.CollaborationConfig
+import com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams
+import com.inspiredandroid.kai.data.collaboration.ModelRef
 import com.inspiredandroid.kai.mcp.McpServerConfig
 import com.inspiredandroid.kai.network.tools.ToolInfo
 import com.inspiredandroid.kai.skills.RegistrySkillEntry
@@ -224,6 +226,33 @@ interface DataRepository {
         systemPrompt: String? = null,
         timeoutMs: Long = 0L,
     ): String
+
+    /**
+     * 在指定会话中以单一模式完整流水线（工具、记忆等）发起一次问答，不污染当前聊天界面历史。
+     */
+    suspend fun askInConversation(
+        conversationId: String,
+        instanceId: String,
+        modelId: String,
+        question: String,
+        timeoutMs: Long = 0L,
+    ): String
+
+    suspend fun retryCollaborationModel(conversationId: String, timeoutMs: Long): String
+
+    fun setCollaborationModelUserScore(conversationId: String, score: Double)
+
+    suspend fun createCollaborationTask(question: String, params: CollaborationWizardParams): String
+
+    suspend fun createCollaborationModelConversation(
+        taskId: String,
+        ref: ModelRef,
+        folderTitle: String,
+        question: String,
+        params: CollaborationWizardParams,
+    ): String
+
+    fun updateCollaborationModelStatus(conversationId: String, status: CollaborationModelStatus, response: String?)
 
     // 协作模式配置 / 聊天模式
     fun getChatMode(): ChatMode

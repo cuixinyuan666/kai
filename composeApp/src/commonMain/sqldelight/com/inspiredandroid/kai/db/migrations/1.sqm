@@ -1,0 +1,15 @@
+CREATE TABLE conversationEntity (
+    id TEXT NOT NULL PRIMARY KEY,
+    title TEXT NOT NULL,
+    type TEXT NOT NULL,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    shellTranscriptJson TEXT NOT NULL
+);
+
+CREATE TABLE messageEntity (
+    conversationId TEXT NOT NULL,
+    orderIndex INTEGER NOT NULL,
+    messageJson TEXT NOT NULL,
+    PRIMARY KEY (conversationId, orderIndex)
+);

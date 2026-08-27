@@ -3,7 +3,6 @@ package com.inspiredandroid.kai.data
 import com.inspiredandroid.kai.defaultUiScale
 import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.collaboration.CollaborationConfig
-import com.inspiredandroid.kai.data.collaboration.ModelScore
 import com.inspiredandroid.kai.linux.LinuxDistro
 import com.russhwolf.settings.Settings
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -575,13 +574,6 @@ class AppSettings(internal val settings: Settings) {
 
     fun setCollaborationConfig(config: CollaborationConfig) {
         settings.putString(KEY_COLLABORATION_CONFIG, collaborationJson.encodeToString(CollaborationConfig.serializer(), config))
-    }
-
-    /** 更新单个模型评分（按 instanceId+modelId 去重合并）。 */
-    fun upsertModelScore(score: ModelScore) {
-        val current = getCollaborationConfig()
-        val others = current.scores.filter { it.instanceId != score.instanceId || it.modelId != score.modelId }
-        setCollaborationConfig(current.copy(scores = others + score))
     }
     // endregion
 

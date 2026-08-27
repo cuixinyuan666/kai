@@ -102,6 +102,11 @@ class ConversationStorage(
         persistence.delete(id, mutableConversations.value)
     }
 
+    fun replaceAll(conversations: List<Conversation>) {
+        mutableConversations.value = conversations
+        persistence.replaceAll(conversations)
+    }
+
     private fun migrateLegacy() {
         val legacyData = readLegacyConversationFile() ?: return
         val key = appSettings.getEncryptionKey() ?: return

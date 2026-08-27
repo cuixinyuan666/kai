@@ -2,7 +2,11 @@ package com.inspiredandroid.kai.ui.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.inspiredandroid.kai.data.CollaborationModelStatus
 import com.inspiredandroid.kai.data.Conversation
+import com.inspiredandroid.kai.data.metadata
+import com.inspiredandroid.kai.data.ConversationCopyFormatter
+import com.inspiredandroid.kai.data.ConversationFolderManager
 import com.inspiredandroid.kai.data.DataRepository
 import com.inspiredandroid.kai.data.FreeMode
 import com.inspiredandroid.kai.data.Service
@@ -11,11 +15,9 @@ import com.inspiredandroid.kai.data.TaskScheduler
 import com.inspiredandroid.kai.data.UiSubmission
 import com.inspiredandroid.kai.data.collaboration.CollaborationEvent
 import com.inspiredandroid.kai.data.collaboration.CollaborationListener
-import com.inspiredandroid.kai.data.collaboration.CollaborationOrchestrator
-import com.inspiredandroid.kai.data.collaboration.CollaborationRoundSnapshot
+import com.inspiredandroid.kai.data.collaboration.CollaborationTaskRunner
+import com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams
 import com.inspiredandroid.kai.data.collaboration.ChatMode
-import com.inspiredandroid.kai.data.collaboration.ModelRef
-import com.inspiredandroid.kai.data.collaboration.ModelScore
 import com.inspiredandroid.kai.getBackgroundDispatcher
 import com.inspiredandroid.kai.network.UiError
 import com.inspiredandroid.kai.network.shouldShowFreeProviderSuggestions
@@ -86,23 +88,31 @@ class ChatViewModel(
         goBackInteractiveMode = ::goBackInteractiveMode,
         sendSmsDraft = ::sendSmsDraft,
         discardSmsDraft = ::discardSmsDraft,
-        toggleChatMode = ::toggleChatMode,
-        startCollaboration = ::startCollaboration,
-        continueCollaborationRound = ::continueCollaborationRound,
+        openCollaborationWizard = ::openCollaborationWizard,
+        dismissCollaborationWizard = ::dismissCollaborationWizard,
+        startCollaborationTask = ::startCollaborationTask,
         stopCollaboration = ::stopCollaboration,
         clearCollaborationNotification = ::clearCollaborationNotification,
+        openCollaborationModelView = ::openCollaborationModelView,
+        closeCollaborationModelView = ::closeCollaborationModelView,
+        openHistoryFolder = ::openHistoryFolder,
+        closeHistoryFolder = ::closeHistoryFolder,
+        copyConversationBranch = ::copyConversationBranch,
+        clearPendingCopyText = ::clearPendingCopyText,
+        retryCollaborationModel = ::retryCollaborationModel,
+        setCollaborationModelScore = ::setCollaborationModelScore,
         resendUserMessage = ::resendUserMessage,
     )
     private val freeModeNames: Map<FreeMode, String> = FreeMode.entries.associateWith { "Free ${it.modelId.replaceFirstChar { c -> c.uppercase() }}" }
     private var currentJob: Job? = null
     private var pendingConversationDeleteJob: Job? = null
-    private var collaborationOrchestrator: CollaborationOrchestrator? = null
-    private var collaborationSuccessfulAnswers: Map<ModelRef, String> = emptyMap()
+    private var collaborationTaskRunner: CollaborationTaskRunner? = null
     private val _state = MutableStateFlow(
         ChatUiState(
             actions = actions,
             showPrivacyInfo = dataRepository.isUsingSharedKey(),
             chatMode = dataRepository.getChatMode(),
+            collaborationConfig = dataRepository.getCollaborationConfig(),
         ),
     )
 
@@ -181,22 +191,37 @@ class ChatViewModel(
         dataRepository.hasUnreadHeartbeat,
     ) { state, history, conversations, conversationId, hasUnreadHeartbeat ->
         val summaries = conversations
+            .filter {
+                it.type != Conversation.TYPE_HEARTBEAT &&
+                    it.type != Conversation.TYPE_FOLDER &&
+                    it.type != Conversation.TYPE_COLLABORATION_TASK &&
+                    it.type != Conversation.TYPE_COLLABORATION_MODEL
+            }
             .sortedByDescending { it.updatedAt }
             .map {
                 val isHeartbeat = it.type == Conversation.TYPE_HEARTBEAT
                 val isInteractive = it.type == Conversation.TYPE_INTERACTIVE
+                val meta = it.metadata()
                 ConversationSummary(
                     id = it.id,
                     title = if (isHeartbeat) "" else it.title.ifEmpty { getString(Res.string.conversation_untitled) },
                     updatedAt = it.updatedAt,
                     isHeartbeat = isHeartbeat,
                     isInteractive = isInteractive,
+                    type = it.type,
+                    parentId = it.parentId,
+                    collaborationStatus = meta.status?.let { name ->
+                        runCatching { CollaborationModelStatus.valueOf(name) }.getOrNull()
+                    },
+                    userScore = meta.userScore,
+                    collaborationQuestion = meta.collaborationQuestion,
                 )
             }
         state.copy(
             history = history.toImmutableList(),
             supportedFileExtensions = dataRepository.supportedFileExtensions().toImmutableList(),
             savedConversations = summaries.toImmutableList(),
+            folderConversations = conversations.toImmutableList(),
             currentConversationId = conversationId,
             hasUnreadHeartbeat = hasUnreadHeartbeat,
             installedSkills = dataRepository.getInstalledSkills().toImmutableList(),
@@ -451,63 +476,27 @@ class ChatViewModel(
     }
 
     // region 协作模式
-    private fun toggleChatMode() {
-        val next = if (_state.value.chatMode == ChatMode.SINGLE) ChatMode.COLLABORATION else ChatMode.SINGLE
-        dataRepository.setChatMode(next)
-        _state.update { it.copy(chatMode = next) }
+    private fun openCollaborationWizard() {
+        _state.update { it.copy(showCollaborationWizard = true) }
     }
 
-    private fun startCollaboration(question: String) {
-        if (question.isBlank()) return
-        collaborationSuccessfulAnswers = emptyMap()
+    private fun dismissCollaborationWizard() {
+        _state.update { it.copy(showCollaborationWizard = false) }
+    }
+
+    private fun startCollaborationTask(params: CollaborationWizardParams) {
+        if (params.question.isBlank()) return
         stopCollaboration()
-        viewModelScope.launch(backgroundDispatcher) {
-            dataRepository.appendUserMessageToCurrentChat(question)
-        }
         _state.update {
             it.copy(
+                showCollaborationWizard = false,
                 isCollaborating = true,
                 collaborationEvents = emptyList(),
                 collaborationSummary = null,
                 collaborationNotification = null,
-                collaborationQuestion = question,
-                collaborationRound = 0,
-                collaborationRounds = emptyList(),
-                canContinueCollaboration = false,
             )
         }
-        runCollaborationRound(roundNumber = 1, question = question)
-    }
-
-    private fun continueCollaborationRound() {
-        val state = _state.value
-        if (state.isCollaborating || !state.canContinueCollaboration) return
-        val question = state.collaborationQuestion ?: return
-        if (collaborationSuccessfulAnswers.isEmpty()) return
-        val nextRound = state.collaborationRound + 1
-        _state.update {
-            it.copy(
-                isCollaborating = true,
-                collaborationSummary = null,
-                canContinueCollaboration = false,
-            )
-        }
-        runCollaborationRound(
-            roundNumber = nextRound,
-            question = question,
-            targetModels = collaborationSuccessfulAnswers.keys.toList(),
-            previousAnswers = collaborationSuccessfulAnswers,
-        )
-    }
-
-    private fun runCollaborationRound(
-        roundNumber: Int,
-        question: String,
-        targetModels: List<ModelRef> = emptyList(),
-        previousAnswers: Map<ModelRef, String> = emptyMap(),
-    ) {
-        val config = dataRepository.getCollaborationConfig()
-        val orchestrator = CollaborationOrchestrator(
+        val runner = CollaborationTaskRunner(
             repository = dataRepository,
             listener = object : CollaborationListener {
                 override fun onEvent(event: CollaborationEvent) {
@@ -518,57 +507,87 @@ class ChatViewModel(
                     _state.update { s -> s.copy(collaborationNotification = "$title：$body") }
                 }
 
-                override fun onScores(scores: List<ModelScore>) {
-                    val current = dataRepository.getCollaborationConfig()
-                    val merged = (
-                        current.scores.filter { cs ->
-                            scores.none { it.instanceId == cs.instanceId && it.modelId == cs.modelId }
-                        } + scores
-                    )
-                    dataRepository.setCollaborationConfig(current.copy(scores = merged))
+                override fun onModelStatusChanged(conversationId: String, status: CollaborationModelStatus) {
+                    // State refreshes via savedConversations flow
                 }
 
-                override fun onRoundFinished(round: Int, snapshot: CollaborationRoundSnapshot, canContinue: Boolean) {
-                    collaborationSuccessfulAnswers = snapshot.responses
-                        .filter { !it.failed && !it.response.isNullOrBlank() }
-                        .associate { it.ref to it.response!! }
+                override fun onTaskFinished(taskId: String, summary: String) {
                     _state.update { s ->
                         s.copy(
-                            collaborationRound = round,
-                            collaborationRounds = s.collaborationRounds + snapshot,
-                            canContinueCollaboration = canContinue,
+                            isCollaborating = false,
+                            collaborationSummary = summary,
+                            historyTreeParentId = Conversation.FOLDER_COLLABORATION_MODE_ID,
                         )
-                    }
-                }
-
-                override fun onFinished(summary: String, allSucceeded: Boolean) {
-                    _state.update { s -> s.copy(isCollaborating = false, collaborationSummary = summary) }
-                    viewModelScope.launch(backgroundDispatcher) {
-                        dataRepository.appendAssistantMessageToCurrentChat(summary)
                     }
                 }
             },
         )
-        collaborationOrchestrator = orchestrator
-        viewModelScope.launch {
-            orchestrator.runRound(
-                originalQuestion = question,
-                config = config,
-                roundNumber = roundNumber,
-                targetModels = targetModels,
-                previousAnswers = previousAnswers,
-            )
+        collaborationTaskRunner = runner
+        viewModelScope.launch(backgroundDispatcher) {
+            runner.runTask(params)
         }
     }
 
     private fun stopCollaboration() {
-        collaborationOrchestrator?.cancel()
-        collaborationOrchestrator = null
+        collaborationTaskRunner?.cancel()
+        collaborationTaskRunner = null
         _state.update { it.copy(isCollaborating = false) }
     }
 
     private fun clearCollaborationNotification() {
         _state.update { it.copy(collaborationNotification = null) }
+    }
+
+    private fun openCollaborationModelView(conversationId: String) {
+        _state.update { it.copy(collaborationModelViewId = conversationId) }
+    }
+
+    private fun closeCollaborationModelView() {
+        _state.update { it.copy(collaborationModelViewId = null) }
+    }
+
+    private fun openHistoryFolder(folderId: String) {
+        _state.update { it.copy(historyTreeParentId = folderId) }
+    }
+
+    private fun closeHistoryFolder() {
+        _state.update { it.copy(historyTreeParentId = null) }
+    }
+
+    private fun copyConversationBranch(conversationId: String, level: Int) {
+        val conversations = dataRepository.savedConversations.value
+        val text = when (level) {
+            1 -> ConversationCopyFormatter.copyLevel1(conversations, conversationId)
+            2 -> conversations.find { it.id == conversationId }?.let {
+                ConversationCopyFormatter.copyLevel2(conversations, it)
+            } ?: ""
+            3 -> conversations.find { it.id == conversationId }?.let {
+                ConversationCopyFormatter.copyLevel3(it)
+            } ?: ""
+            else -> ""
+        }
+        if (text.isNotBlank()) {
+            _state.update { it.copy(pendingCopyText = text) }
+        }
+    }
+
+    private fun clearPendingCopyText() {
+        _state.update { it.copy(pendingCopyText = null) }
+    }
+
+    private fun retryCollaborationModel(conversationId: String) {
+        val conversation = dataRepository.savedConversations.value.find { it.id == conversationId }
+        val timeoutSec = conversation?.metadata()?.maxWaitSeconds ?: 60
+        val timeout = timeoutSec.toLong() * 1000L
+        viewModelScope.launch(backgroundDispatcher) {
+            _state.update { it.copy(isCollaborating = true) }
+            dataRepository.retryCollaborationModel(conversationId, timeout)
+            _state.update { it.copy(isCollaborating = false) }
+        }
+    }
+
+    private fun setCollaborationModelScore(conversationId: String, score: Double) {
+        dataRepository.setCollaborationModelUserScore(conversationId, score)
     }
     // endregion
 
@@ -698,7 +717,8 @@ class ChatViewModel(
                 collaborationSummary = null,
                 isCollaborating = false,
                 collaborationNotification = null,
-                collaborationQuestion = null,
+                showCollaborationWizard = false,
+                collaborationModelViewId = null,
             )
         }
     }

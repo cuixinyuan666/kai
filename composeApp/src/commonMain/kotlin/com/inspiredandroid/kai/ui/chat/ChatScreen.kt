@@ -80,9 +80,10 @@ import com.inspiredandroid.kai.getBackgroundDispatcher
 import com.inspiredandroid.kai.onDragAndDropEventDropped
 import com.inspiredandroid.kai.ui.build.KaiBuildScreen
 import com.inspiredandroid.kai.ui.chat.composables.BotMessage
-import com.inspiredandroid.kai.ui.chat.composables.ChatHistorySheet
+import com.inspiredandroid.kai.ui.chat.composables.ChatHistoryTreeSheet
+import com.inspiredandroid.kai.ui.chat.composables.CollaborationModelChatView
 import com.inspiredandroid.kai.ui.chat.composables.CircleIconButton
-import com.inspiredandroid.kai.ui.chat.composables.CollaborationPanel
+import com.inspiredandroid.kai.ui.chat.composables.CollaborationWizardSheet
 import com.inspiredandroid.kai.ui.chat.composables.EmptyState
 import com.inspiredandroid.kai.ui.chat.composables.ErrorMessage
 import com.inspiredandroid.kai.ui.chat.composables.FreeProviderSuggestionsPanel
@@ -96,6 +97,7 @@ import com.inspiredandroid.kai.ui.chat.composables.UserMessage
 import com.inspiredandroid.kai.ui.chat.composables.WaitingResponseRow
 import com.inspiredandroid.kai.ui.chat.composables.uiErrorText
 import com.inspiredandroid.kai.ui.components.LogoAnimation
+import com.inspiredandroid.kai.ui.rememberCopyToClipboard
 import com.inspiredandroid.kai.ui.components.VerticalScrollbarForList
 import com.inspiredandroid.kai.ui.components.animatedGradientBorder
 import com.inspiredandroid.kai.ui.dynamicui.FrozenSubmission
@@ -291,9 +293,7 @@ private fun InteractiveModeScreen(
                         availableServices = interactiveServices,
                         onSelectService = uiState.actions.selectService,
                         onSelectModel = uiState.actions.selectModel,
-                        chatMode = uiState.chatMode,
-                        onToggleChatMode = uiState.actions.toggleChatMode,
-                        onStartCollaboration = uiState.actions.startCollaboration,
+                        onOpenCollaborationWizard = uiState.actions.openCollaborationWizard,
                         installedSkills = uiState.installedSkills,
                     )
                 }
@@ -510,7 +510,15 @@ private fun ChatModeScreen(
     var questionInputText by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
+    val copyToClipboard = rememberCopyToClipboard()
     val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(uiState.pendingCopyText) {
+        val text = uiState.pendingCopyText
+        if (text != null) {
+            copyToClipboard(text)
+            uiState.actions.clearPendingCopyText()
+        }
+    }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // When the active conversation changes (e.g. user starts a new chat from the
@@ -932,9 +940,7 @@ private fun ChatModeScreen(
                 }
             }
 
-            if (!isSandboxOpen) {
-                CollaborationPanel(uiState = uiState)
-
+            if (!isSandboxOpen && uiState.collaborationModelViewId == null) {
                 QuestionInput(
                     files = uiState.files,
                     addFile = uiState.actions.addFile,
@@ -943,15 +949,13 @@ private fun ChatModeScreen(
                     supportedFileExtensions = uiState.supportedFileExtensions,
                     textState = questionInputText,
                     onTextStateChange = { questionInputText = it },
-                    isLoading = uiState.isLoading,
+                    isLoading = uiState.isLoading || uiState.isCollaborating,
                     cancel = uiState.actions.cancel,
                     availableServices = uiState.availableServices,
                     onSelectService = uiState.actions.selectService,
                     onSelectModel = uiState.actions.selectModel,
                     modelBenchmarks = uiState.modelBenchmarks,
-                    chatMode = uiState.chatMode,
-                    onToggleChatMode = uiState.actions.toggleChatMode,
-                    onStartCollaboration = uiState.actions.startCollaboration,
+                    onOpenCollaborationWizard = uiState.actions.openCollaborationWizard,
                     installedSkills = uiState.installedSkills,
                 )
             }
@@ -962,16 +966,49 @@ private fun ChatModeScreen(
         ) { data ->
             Snackbar(snackbarData = data)
         }
+
+        val modelViewId = uiState.collaborationModelViewId
+        if (modelViewId != null) {
+            val modelConversation = uiState.folderConversations.find { it.id == modelViewId }
+            if (modelConversation != null) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background),
+                ) {
+                    CollaborationModelChatView(
+                        conversation = modelConversation,
+                        actions = uiState.actions,
+                        isLoading = uiState.isCollaborating,
+                        onBack = uiState.actions.closeCollaborationModelView,
+                    )
+                }
+            }
+        }
     }
 
     if (showHistorySheet) {
-        ChatHistorySheet(
-            conversations = filteredConversations,
-            currentConversationId = uiState.currentConversationId,
-            pendingConversationDeletion = uiState.pendingConversationDeletion,
+        ChatHistoryTreeSheet(
+            conversations = uiState.folderConversations,
+            treeParentId = uiState.historyTreeParentId,
             actions = uiState.actions,
-            onDismiss = { showHistorySheet = false },
-            onConversationSelected = { isSandboxOpen = false },
+            onDismiss = {
+                uiState.actions.closeHistoryFolder()
+                showHistorySheet = false
+            },
+            onOpenModelView = { id ->
+                showHistorySheet = false
+                uiState.actions.openCollaborationModelView(id)
+            },
+            onCopy = { id, level -> uiState.actions.copyConversationBranch(id, level) },
+        )
+    }
+
+    if (uiState.showCollaborationWizard) {
+        CollaborationWizardSheet(
+            defaultConfig = uiState.collaborationConfig,
+            onDismiss = uiState.actions.dismissCollaborationWizard,
+            onStart = uiState.actions.startCollaborationTask,
         )
     }
 }

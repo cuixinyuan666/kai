@@ -103,8 +103,7 @@ fun QuestionInput(
     onSelectModel: (String, String) -> Unit = { _, _ -> },
     modelBenchmarks: Map<String, Double> = emptyMap(),
     chatMode: ChatMode = ChatMode.SINGLE,
-    onToggleChatMode: () -> Unit = {},
-    onStartCollaboration: (String) -> Unit = {},
+    onOpenCollaborationWizard: () -> Unit = {},
     installedSkills: ImmutableList<SkillManifest> = persistentListOf(),
     modifier: Modifier = Modifier,
 ) {
@@ -118,12 +117,7 @@ fun QuestionInput(
         ) {
             SuggestionChip(
                 modifier = Modifier.handCursor(),
-                onClick = { if (chatMode != ChatMode.SINGLE) onToggleChatMode() },
-                label = { Text("单一模式") },
-            )
-            SuggestionChip(
-                modifier = Modifier.handCursor(),
-                onClick = { if (chatMode != ChatMode.COLLABORATION) onToggleChatMode() },
+                onClick = onOpenCollaborationWizard,
                 label = { Text("协作模式") },
             )
         }
@@ -199,11 +193,7 @@ fun QuestionInput(
         fun submitQuestion() {
             val text = textState.text
             if (text.isNotBlank()) {
-                if (chatMode == ChatMode.COLLABORATION) {
-                    onStartCollaboration(text.trim())
-                } else {
-                    ask(text.trim())
-                }
+                ask(text.trim())
                 onTextStateChange(TextFieldValue(""))
             }
         }
