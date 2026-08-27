@@ -703,10 +703,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#release" class="md-nav__link">
+  <a href="#v320-v330" class="md-nav__link">
     <span class="md-ellipsis">
       
-        为什么看不到最新 Release？
+        已知失败原因（v3.2.0 / v3.3.0）
       
     </span>
   </a>
@@ -714,10 +714,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#v330-github" class="md-nav__link">
+  <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        发布 v3.3.0 到 GitHub（需在本机执行）
+        发布流程
       
     </span>
   </a>
@@ -725,21 +725,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#release-v330" class="md-nav__link">
+  <a href="#release-v331" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Release 产物（v3.3.0）
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#release_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        验证 Release 是否成功
+        Release 产物（v3.3.1）
       
     </span>
   </a>
@@ -764,33 +753,22 @@
 
 
 <h1 id="github-releases">发布到 GitHub Releases</h1>
-<h2 id="release">为什么看不到最新 Release？</h2>
-<p>本仓库在 Cursor Cloud 中推送到的是 <strong>Origin</strong>（<code>origin.cursor.com</code>），而 GitHub Releases 由 <strong>GitHub</strong>（<code>github.com/SimonSchubert/Kai</code>）上的 tag 触发。</p>
-<p><strong>仅推送到 Origin 不会自动在 GitHub 创建 Release。</strong> 当前 GitHub 上最新 Release 仍为 <strong>v3.0.0</strong>（v3.1.x / v3.2.0 / v3.3.0 的 tag 若只存在于 Origin，GitHub Actions 不会运行）。</p>
-<h2 id="v330-github">发布 v3.3.0 到 GitHub（需在本机执行）</h2>
-<p>在已登录 GitHub 的机器上：</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># 1. 添加 GitHub 远程（若尚未添加）</span>
-git<span class="w"> </span>remote<span class="w"> </span>add<span class="w"> </span>github<span class="w"> </span>https://github.com/SimonSchubert/Kai.git
-
-<span class="c1"># 2. 拉取 Cursor / Origin 上的最新 main 与 tag（或合并协作功能分支）</span>
-git<span class="w"> </span>fetch<span class="w"> </span>origin<span class="w"> </span>main
-git<span class="w"> </span>checkout<span class="w"> </span>main
-git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>main
-
-<span class="c1"># 3. 推送代码与 tag 到 GitHub（触发 release.yml）</span>
-git<span class="w"> </span>push<span class="w"> </span>github<span class="w"> </span>main
-git<span class="w"> </span>push<span class="w"> </span>github<span class="w"> </span>v3.3.0
-
-<span class="c1"># 4. 若 tag 已存在但 Release 未生成，可手动触发 Actions：</span>
-<span class="c1"># GitHub → Actions → Build and Release → Run workflow → tag: v3.3.0</span>
+<p>本仓库的 GitHub 地址是 <strong>https://github.com/cuixinyuan666/kai</strong>（不是上游 <code>SimonSchubert/Kai</code>）。</p>
+<p>Cursor Cloud 推送到 Origin 后，GitHub 会镜像 <code>main</code> 与 tag。<code>v*</code> tag 会触发 <code>.github/workflows/release.yml</code>。</p>
+<h2 id="v320-v330">已知失败原因（v3.2.0 / v3.3.0）</h2>
+<p>各平台安装包已成功构建，但 <strong>Rename assets</strong> 在 Windows zip 已名为 <code>Kai-&lt;version&gt;-windows.zip</code> 时执行 <code>mv</code> 到同名文件失败，因此没有创建 GitHub Release。v3.3.1 已改为幂等重命名，WinGet 失败也不再阻断 Release。</p>
+<h2 id="_1">发布流程</h2>
+<div class="highlight"><pre><span></span><code><span class="c1"># 版本号写在 gradle/libs.versions.toml 的 appVersion</span>
+git<span class="w"> </span>tag<span class="w"> </span>v3.3.1
+git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>main
+git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v3.3.1
 </code></pre></div>
-<p>或使用 GitHub CLI：</p>
-<div class="highlight"><pre><span></span><code>gh<span class="w"> </span>auth<span class="w"> </span>login
-git<span class="w"> </span>push<span class="w"> </span>https://github.com/SimonSchubert/Kai.git<span class="w"> </span>main<span class="w"> </span>v3.3.0
-gh<span class="w"> </span>workflow<span class="w"> </span>run<span class="w"> </span>release.yml<span class="w"> </span>-f<span class="w"> </span><span class="nv">tag</span><span class="o">=</span>v3.3.0
-</code></pre></div>
-<p>若你 fork 到自己的仓库（例如 <code>cuixinyuan666/kai</code>），将上述 URL 换成你的 fork 地址即可；Release 会出现在 <strong>你的 fork</strong> 的 Releases 页面，而不是上游 <code>SimonSchubert/Kai</code>。</p>
-<h2 id="release-v330">Release 产物（v3.3.0）</h2>
+<p>然后打开：</p>
+<ul>
+<li>Actions：https://github.com/cuixinyuan666/kai/actions</li>
+<li>Releases：https://github.com/cuixinyuan666/kai/releases</li>
+</ul>
+<h2 id="release-v331">Release 产物（v3.3.1）</h2>
 <table>
 <thead>
 <tr>
@@ -801,31 +779,26 @@ gh<span class="w"> </span>workflow<span class="w"> </span>run<span class="w"> </
 <tbody>
 <tr>
 <td>Android</td>
-<td><code>Kai-3.3.0-android.apk</code></td>
+<td><code>Kai-3.3.1-android.apk</code></td>
 </tr>
 <tr>
 <td>Windows</td>
-<td><code>Kai-3.3.0-windows.zip</code>（便携压缩包）</td>
+<td><code>Kai-3.3.1-windows.zip</code>（便携压缩包）</td>
 </tr>
 <tr>
 <td>Windows</td>
-<td><code>Kai-3.3.0-windows.msi</code></td>
+<td><code>Kai-3.3.1-windows.msi</code></td>
 </tr>
 <tr>
 <td>macOS</td>
-<td><code>Kai-3.3.0-macos.dmg</code></td>
+<td><code>Kai-3.3.1-macos.dmg</code></td>
 </tr>
 <tr>
 <td>Linux</td>
-<td><code>Kai-3.3.0-linux.deb</code> / <code>.rpm</code> / <code>.AppImage</code> / <code>.flatpak</code> / <code>.tar.gz</code></td>
+<td><code>Kai-3.3.1-linux.deb</code> / <code>.rpm</code> / <code>.AppImage</code> / <code>.flatpak</code> / <code>.tar.gz</code></td>
 </tr>
 </tbody>
 </table>
-<h2 id="release_1">验证 Release 是否成功</h2>
-<ol>
-<li>打开 https://github.com/SimonSchubert/Kai/actions — 确认 <strong>Build and Release</strong> 工作流对 <code>v3.3.0</code> 为绿色。</li>
-<li>打开 https://github.com/SimonSchubert/Kai/releases — 应出现 <strong>Release v3.3.0</strong> 及上述安装包。</li>
-</ol>
 
 
 
