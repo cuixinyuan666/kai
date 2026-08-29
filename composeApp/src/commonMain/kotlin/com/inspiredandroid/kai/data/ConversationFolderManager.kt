@@ -33,6 +33,7 @@ object ConversationFolderManager {
 
         ensureFolder(Conversation.FOLDER_SINGLE_MODE_ID, Conversation.FOLDER_SINGLE_MODE_TITLE)
         ensureFolder(Conversation.FOLDER_COLLABORATION_MODE_ID, Conversation.FOLDER_COLLABORATION_MODE_TITLE)
+        ensureFolder(Conversation.FOLDER_WAR_MODE_ID, Conversation.FOLDER_WAR_MODE_TITLE)
 
         val orphans = result.filter { conv ->
             conv.parentId == null &&
@@ -44,6 +45,10 @@ object ConversationFolderManager {
                 Conversation.TYPE_COLLABORATION_TASK,
                 Conversation.TYPE_COLLABORATION_MODEL,
                 -> Conversation.FOLDER_COLLABORATION_MODE_ID
+                Conversation.TYPE_WAR_TASK,
+                Conversation.TYPE_WAR_MODEL,
+                Conversation.TYPE_WAR_RESULT,
+                -> Conversation.FOLDER_WAR_MODE_ID
                 else -> Conversation.FOLDER_SINGLE_MODE_ID
             }
             val idx = result.indexOfFirst { it.id == orphan.id }
@@ -58,11 +63,21 @@ object ConversationFolderManager {
     fun childrenOf(parentId: String, conversations: List<Conversation>): List<Conversation> =
         conversations.filter { it.parentId == parentId }.sortedByDescending { it.updatedAt }
 
-    fun nextTaskFolderTitle(conversations: List<Conversation>, nowMs: Long = Clock.System.now().toEpochMilliseconds()): String {
+    fun nextTaskFolderTitle(conversations: List<Conversation>, nowMs: Long = Clock.System.now().toEpochMilliseconds()): String =
+        nextTaskFolderTitleForType(conversations, Conversation.TYPE_COLLABORATION_TASK, nowMs)
+
+    fun nextWarTaskFolderTitle(conversations: List<Conversation>, nowMs: Long = Clock.System.now().toEpochMilliseconds()): String =
+        nextTaskFolderTitleForType(conversations, Conversation.TYPE_WAR_TASK, nowMs)
+
+    private fun nextTaskFolderTitleForType(
+        conversations: List<Conversation>,
+        taskType: String,
+        nowMs: Long,
+    ): String {
         val date = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
         val datePrefix = "${date.year}-${date.monthNumber.toString().padStart(2, '0')}-${date.dayOfMonth.toString().padStart(2, '0')}"
         val existing = conversations.count { conv ->
-            conv.type == Conversation.TYPE_COLLABORATION_TASK &&
+            conv.type == taskType &&
                 conv.title.startsWith(datePrefix)
         }
         return "$datePrefix-任务${existing + 1}"

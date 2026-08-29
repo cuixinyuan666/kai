@@ -53,6 +53,7 @@ internal fun ChatHistoryTreeSheet(
     actions: ChatActions,
     onDismiss: () -> Unit,
     onOpenModelView: (String) -> Unit,
+    onOpenWarResult: (String) -> Unit,
     onCopy: (String, Int) -> Unit,
 ) {
     ModalBottomSheet(
@@ -60,7 +61,11 @@ internal fun ChatHistoryTreeSheet(
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
-        val rootIds = listOf(Conversation.FOLDER_SINGLE_MODE_ID, Conversation.FOLDER_COLLABORATION_MODE_ID)
+        val rootIds = listOf(
+            Conversation.FOLDER_SINGLE_MODE_ID,
+            Conversation.FOLDER_COLLABORATION_MODE_ID,
+            Conversation.FOLDER_WAR_MODE_ID,
+        )
         val parentId = treeParentId
         var sortReverse by remember(parentId) { mutableStateOf(false) }
 
@@ -85,6 +90,7 @@ internal fun ChatHistoryTreeSheet(
                         null -> "聊天记录"
                         Conversation.FOLDER_SINGLE_MODE_ID -> Conversation.FOLDER_SINGLE_MODE_TITLE
                         Conversation.FOLDER_COLLABORATION_MODE_ID -> Conversation.FOLDER_COLLABORATION_MODE_TITLE
+                        Conversation.FOLDER_WAR_MODE_ID -> Conversation.FOLDER_WAR_MODE_TITLE
                         else -> conversations.find { it.id == parentId }?.title ?: "文件夹"
                     },
                     style = MaterialTheme.typography.titleLarge,
@@ -111,18 +117,23 @@ internal fun ChatHistoryTreeSheet(
             }
 
             val isCollaborationTaskLevel = parentId == Conversation.FOLDER_COLLABORATION_MODE_ID
+            val isWarTaskLevel = parentId == Conversation.FOLDER_WAR_MODE_ID
 
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
                 items(items, key = { it.id }) { item ->
                     HistoryTreeRow(
                         conversation = item,
-                        showTaskActions = isCollaborationTaskLevel && item.type == Conversation.TYPE_COLLABORATION_TASK,
+                        showTaskActions = (isCollaborationTaskLevel && item.type == Conversation.TYPE_COLLABORATION_TASK) ||
+                            (isWarTaskLevel && item.type == Conversation.TYPE_WAR_TASK),
                         onClick = {
                             when (item.type) {
-                                Conversation.TYPE_FOLDER,
-                                Conversation.TYPE_COLLABORATION_TASK,
-                                -> actions.openHistoryFolder(item.id)
-                                Conversation.TYPE_COLLABORATION_MODEL -> onOpenModelView(item.id)
+                                Conversation.TYPE_FOLDER -> actions.openHistoryFolder(item.id)
+                                Conversation.TYPE_COLLABORATION_TASK -> actions.openHistoryFolder(item.id)
+                                Conversation.TYPE_WAR_TASK -> onOpenWarResult(item.id)
+                                Conversation.TYPE_WAR_RESULT -> onOpenWarResult(item.parentId ?: item.id)
+                                Conversation.TYPE_COLLABORATION_MODEL,
+                                Conversation.TYPE_WAR_MODEL,
+                                -> onOpenModelView(item.id)
                                 else -> {
                                     actions.loadConversation(item.id)
                                     onDismiss()
@@ -132,14 +143,26 @@ internal fun ChatHistoryTreeSheet(
                         onCopy = {
                             val level = when (item.type) {
                                 Conversation.TYPE_FOLDER -> 1
-                                Conversation.TYPE_COLLABORATION_TASK -> 2
-                                Conversation.TYPE_COLLABORATION_MODEL -> 3
+                                Conversation.TYPE_COLLABORATION_TASK,
+                                Conversation.TYPE_WAR_TASK,
+                                -> 2
+                                Conversation.TYPE_COLLABORATION_MODEL,
+                                Conversation.TYPE_WAR_MODEL,
+                                Conversation.TYPE_WAR_RESULT,
+                                -> 3
                                 else -> 1
                             }
                             onCopy(item.id, level)
                         },
                         onDelete = { actions.deleteConversation(item.id) },
-                        onRetry = { actions.retryCollaborationTask(item.id) },
+                        onRetry = {
+                            if (item.type == Conversation.TYPE_WAR_TASK) {
+                                // War retry not implemented yet — open result view
+                                onOpenWarResult(item.id)
+                            } else {
+                                actions.retryCollaborationTask(item.id)
+                            }
+                        },
                     )
                 }
             }
@@ -191,6 +214,15 @@ private fun HistoryTreeRow(
                 overflow = TextOverflow.Ellipsis,
             )
             if (conversation.type == Conversation.TYPE_COLLABORATION_TASK && meta.collaborationQuestion != null) {
+                Text(
+                    text = meta.collaborationQuestion!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (conversation.type == Conversation.TYPE_WAR_TASK && meta.collaborationQuestion != null) {
                 Text(
                     text = meta.collaborationQuestion!!,
                     style = MaterialTheme.typography.bodySmall,

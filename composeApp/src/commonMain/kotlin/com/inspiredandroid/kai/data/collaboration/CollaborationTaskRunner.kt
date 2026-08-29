@@ -1,11 +1,8 @@
 package com.inspiredandroid.kai.data.collaboration
 
 import com.inspiredandroid.kai.data.CollaborationModelStatus
-import com.inspiredandroid.kai.data.Conversation
 import com.inspiredandroid.kai.data.ConversationFolderManager
-import com.inspiredandroid.kai.data.ConversationMetadata
 import com.inspiredandroid.kai.data.DataRepository
-import com.inspiredandroid.kai.data.ServiceEntry
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -26,7 +23,7 @@ class CollaborationTaskRunner(
     }
 
     suspend fun runTask(params: CollaborationWizardParams) {
-        val eligible = resolveEligibleModels(params.minScoreThreshold)
+        val eligible = CollaborationSupport.resolveEligibleModels(repository, params.minScoreThreshold)
         if (eligible.isEmpty()) {
             listener.onNotify("无法开始协作", "没有模型测试分数 > ${params.minScoreThreshold} 的模型。")
             listener.onTaskFinished("", "没有符合条件的模型。")
@@ -34,7 +31,7 @@ class CollaborationTaskRunner(
         }
 
         val services = runCatching { repository.getServiceEntries() }.getOrDefault(emptyList())
-        val labelResolver = buildLabelResolver(services)
+        val labelResolver = CollaborationSupport.buildLabelResolver(services)
 
         val taskId = repository.createCollaborationTask(
             question = params.question,
@@ -81,7 +78,8 @@ class CollaborationTaskRunner(
                             sessionKey = ref.key,
                         ),
                     )
-                    val result = callWithRetry(
+                    val result = CollaborationSupport.callWithRetry(
+                        repository = repository,
                         conversationId = convId,
                         ref = ref,
                         prompt = params.question,
@@ -90,6 +88,19 @@ class CollaborationTaskRunner(
                         timeoutMs = timeoutMs,
                         label = label,
                         notifyOnFailure = params.notifyOnFailure,
+                        cancelled = { cancelled },
+                        onRetryEvent = { attempt ->
+                            listener.onEvent(
+                                CollaborationEvent(
+                                    round = 1,
+                                    CollaborationPhase.RESPONDING,
+                                    "$label 第 $attempt 次失败，重试中…",
+                                    label,
+                                    sessionKey = ref.key,
+                                ),
+                            )
+                        },
+                        onFailureNotify = listener::onNotify,
                     )
                     val status = if (result.isNullOrBlank()) {
                         CollaborationModelStatus.FAILED
@@ -126,14 +137,7 @@ class CollaborationTaskRunner(
 
         val snapshots = modelConversations.map { (ref, pair) ->
             val (convId, label) = pair
-            val conv = repository.savedConversations.value.find { it.id == convId }
-            val response = conv?.messages?.lastOrNull { it.role == "assistant" }?.content
-            CollaborationModelSnapshot(
-                ref = ref,
-                label = label,
-                response = response,
-                failed = response.isNullOrBlank(),
-            )
+            CollaborationSupport.snapshotFromConversation(ref, label, convId, repository)
         }
         val successCount = snapshots.count { !it.failed }
         val summary = "协作任务完成：$successCount / ${eligible.size} 个模型成功作答。"
@@ -158,76 +162,5 @@ class CollaborationTaskRunner(
         }
 
         listener.onTaskFinished(taskId, summary)
-    }
-
-    private fun resolveEligibleModels(minScore: Double): List<ModelRef> {
-        val benchmarks = runCatching { repository.getModelBenchmarks() }
-            .getOrDefault(emptyList())
-            .associate { it.modelKey to it.totalScore }
-        val entries: List<ServiceEntry> = runCatching { repository.getServiceEntries() }.getOrDefault(emptyList())
-        return buildList {
-            for (entry in entries) {
-                val modelIds = entry.modelOptions.map { it.id }.ifEmpty { listOfNotNull(entry.modelId) }
-                for (modelId in modelIds.distinct()) {
-                    val score = benchmarks["${entry.serviceId}::$modelId"] ?: 0.0
-                    if (score > minScore) {
-                        add(ModelRef(entry.instanceId, modelId))
-                    }
-                }
-            }
-        }
-    }
-
-    private fun buildLabelResolver(entries: List<ServiceEntry>): Map<String, String> {
-        val map = mutableMapOf<String, String>()
-        for (entry in entries) {
-            for (opt in entry.modelOptions) {
-                map[ModelRef(entry.instanceId, opt.id).key] = "${entry.serviceName} / ${opt.label}"
-            }
-        }
-        return map
-    }
-
-    private suspend fun callWithRetry(
-        conversationId: String,
-        ref: ModelRef,
-        prompt: String,
-        files: List<io.github.vinceglb.filekit.PlatformFile>,
-        retryCount: Int,
-        timeoutMs: Long,
-        label: String,
-        notifyOnFailure: Boolean,
-    ): String? {
-        repeat(retryCount + 1) { attempt ->
-            if (cancelled) return null
-            try {
-                val result = repository.askInConversation(
-                    conversationId = conversationId,
-                    instanceId = ref.instanceId,
-                    modelId = ref.modelId,
-                    question = prompt,
-                    timeoutMs = timeoutMs,
-                    files = files,
-                )
-                if (result.isNotBlank()) return result
-            } catch (_: Exception) {
-                // retry
-            }
-            if (attempt < retryCount) {
-                listener.onEvent(
-                    CollaborationEvent(
-                        round = 1,
-                        CollaborationPhase.RESPONDING,
-                        "$label 第 ${attempt + 1} 次失败，重试中…",
-                        label,
-                        sessionKey = ref.key,
-                    ),
-                )
-            }
-        }
-        if (notifyOnFailure) {
-            listener.onNotify("模型调用失败", "$label 在重试 $retryCount 次后仍失败。")
-        }
-        return null
     }
 }

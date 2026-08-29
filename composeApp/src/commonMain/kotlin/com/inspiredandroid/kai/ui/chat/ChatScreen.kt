@@ -77,6 +77,7 @@ import com.inspiredandroid.kai.TerminalLine
 import com.inspiredandroid.kai.data.Service
 import com.inspiredandroid.kai.data.metadata
 import com.inspiredandroid.kai.data.supportsAgenticFlows
+import com.inspiredandroid.kai.data.war.decodeWarTaskResult
 import com.inspiredandroid.kai.getBackgroundDispatcher
 import com.inspiredandroid.kai.onDragAndDropEventDropped
 import com.inspiredandroid.kai.ui.build.KaiBuildScreen
@@ -95,6 +96,8 @@ import com.inspiredandroid.kai.ui.chat.composables.ServiceSelector
 import com.inspiredandroid.kai.ui.chat.composables.TopBar
 import com.inspiredandroid.kai.ui.chat.composables.TrailingIcon
 import com.inspiredandroid.kai.ui.chat.composables.UserMessage
+import com.inspiredandroid.kai.ui.chat.composables.WarResultView
+import com.inspiredandroid.kai.ui.chat.composables.WarWizardSheet
 import com.inspiredandroid.kai.ui.chat.composables.WaitingResponseRow
 import com.inspiredandroid.kai.ui.chat.composables.uiErrorText
 import com.inspiredandroid.kai.ui.components.LogoAnimation
@@ -586,6 +589,9 @@ private fun ChatModeScreen(
                 isCollaborating = uiState.isCollaborating,
                 showCollaborationWizard = uiState.showCollaborationWizard,
                 onOpenCollaborationWizard = uiState.actions.openCollaborationWizard,
+                isWarRunning = uiState.isWarRunning,
+                showWarWizard = uiState.showWarWizard,
+                onOpenWarWizard = uiState.actions.openWarWizard,
                 navigationTabBar = navigationTabBar,
             )
 
@@ -1020,7 +1026,8 @@ private fun ChatModeScreen(
                 val siblings = uiState.folderConversations
                     .filter {
                         it.parentId == modelConversation.parentId &&
-                            it.type == com.inspiredandroid.kai.data.Conversation.TYPE_COLLABORATION_MODEL
+                            (it.type == com.inspiredandroid.kai.data.Conversation.TYPE_COLLABORATION_MODEL ||
+                                it.type == com.inspiredandroid.kai.data.Conversation.TYPE_WAR_MODEL)
                     }
                     .sortedBy { it.title.lowercase() }
                 val index = siblings.indexOfFirst { it.id == modelViewId }
@@ -1032,7 +1039,7 @@ private fun ChatModeScreen(
                     CollaborationModelChatView(
                         conversation = modelConversation,
                         actions = uiState.actions,
-                        isLoading = uiState.isCollaborating,
+                        isLoading = uiState.isCollaborating || uiState.isWarRunning,
                         onBack = uiState.actions.closeCollaborationModelView,
                         hasPrevModel = index > 0,
                         hasNextModel = index >= 0 && index < siblings.lastIndex,
@@ -1044,6 +1051,31 @@ private fun ChatModeScreen(
                             ?.serviceId,
                     )
                 }
+            }
+        }
+        val warTaskId = uiState.warResultViewTaskId
+        if (warTaskId != null) {
+            val warResult = uiState.folderConversations
+                .find { it.id == warTaskId }
+                ?.metadata()
+                ?.warResultJson
+                ?.let { decodeWarTaskResult(it) }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+            ) {
+                WarResultView(
+                    result = warResult,
+                    warEvents = uiState.warEvents,
+                    isRunning = uiState.isWarRunning,
+                    actions = uiState.actions,
+                    onBack = uiState.actions.closeWarResultView,
+                    onCopy = uiState.actions.copyPlainText,
+                    onOpenModelFolder = {
+                        uiState.actions.openHistoryFolder(warTaskId)
+                    },
+                )
             }
         }
     }
@@ -1061,6 +1093,10 @@ private fun ChatModeScreen(
                 showHistorySheet = false
                 uiState.actions.openCollaborationModelView(id)
             },
+            onOpenWarResult = { taskId ->
+                showHistorySheet = false
+                uiState.actions.openWarResultView(taskId)
+            },
             onCopy = { id, level -> uiState.actions.copyConversationBranch(id, level) },
         )
     }
@@ -1076,6 +1112,23 @@ private fun ChatModeScreen(
             onPendingPromptConsumed = uiState.actions.clearPendingPromptText,
             onDismiss = uiState.actions.dismissCollaborationWizard,
             onStart = uiState.actions.startCollaborationTask,
+            speechToText = speechToText,
+        )
+    }
+
+    if (uiState.showWarWizard) {
+        WarWizardSheet(
+            defaultConfig = uiState.collaborationConfig,
+            supportedFileExtensions = uiState.supportedFileExtensions,
+            speechSupported = speechToText?.isSupported == true,
+            isOptimizingPrompt = uiState.isOptimizingPrompt,
+            pendingPromptText = uiState.pendingPromptText,
+            availableServices = uiState.availableServices,
+            modelBenchmarks = uiState.modelBenchmarks,
+            onOptimizePrompt = { uiState.actions.optimizePrompt(it) },
+            onPendingPromptConsumed = uiState.actions.clearPendingPromptText,
+            onDismiss = uiState.actions.dismissWarWizard,
+            onStart = uiState.actions.startWarTask,
             speechToText = speechToText,
         )
     }

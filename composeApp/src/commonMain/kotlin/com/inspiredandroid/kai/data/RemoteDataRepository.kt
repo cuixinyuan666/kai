@@ -9,6 +9,8 @@ import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.collaboration.CollaborationConfig
 import com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams
 import com.inspiredandroid.kai.data.collaboration.ModelRef
+import com.inspiredandroid.kai.data.war.WarTaskResult
+import com.inspiredandroid.kai.data.war.encodeJson
 import com.inspiredandroid.kai.data.providers.buildAnthropicMessages
 import com.inspiredandroid.kai.data.providers.buildOpenAIMessages
 import com.inspiredandroid.kai.email.EmailPoller
@@ -2451,6 +2453,112 @@ class RemoteDataRepository(
         val meta = conversation.metadata().copy(status = status.name)
         val updated = conversation.withMetadata(meta).copy(updatedAt = Clock.System.now().toEpochMilliseconds())
         conversationStorage.saveConversation(updated)
+    }
+
+    override suspend fun createWarTask(
+        question: String,
+        params: com.inspiredandroid.kai.data.war.WarWizardParams,
+        summaryRef: ModelRef,
+    ): String {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val title = ConversationFolderManager.nextWarTaskFolderTitle(savedConversations.value, now)
+        val id = Uuid.random().toString()
+        val metadata = ConversationMetadata(
+            collaborationQuestion = question,
+            minScoreThreshold = params.minScoreThreshold,
+            maxWaitSeconds = params.maxWaitSeconds,
+            retryCount = params.retryCount,
+            notifyOnFailure = params.notifyOnFailure,
+            notifyOnComplete = params.notifyOnComplete,
+            status = CollaborationModelStatus.RUNNING.name,
+            taskMode = "war",
+            summaryModelInstanceId = summaryRef.instanceId,
+            summaryModelId = summaryRef.modelId,
+        )
+        val task = Conversation(
+            id = id,
+            messages = emptyList(),
+            createdAt = now,
+            updatedAt = now,
+            title = title,
+            type = Conversation.TYPE_WAR_TASK,
+            parentId = Conversation.FOLDER_WAR_MODE_ID,
+            metadataJson = metadata.encode(),
+        )
+        conversationStorage.saveConversation(task)
+        return id
+    }
+
+    override suspend fun createWarModelConversation(
+        taskId: String,
+        ref: ModelRef,
+        folderTitle: String,
+        question: String,
+        params: com.inspiredandroid.kai.data.war.WarWizardParams,
+    ): String {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val id = Uuid.random().toString()
+        val metadata = ConversationMetadata(
+            collaborationQuestion = question,
+            instanceId = ref.instanceId,
+            modelId = ref.modelId,
+            status = CollaborationModelStatus.RUNNING.name,
+            minScoreThreshold = params.minScoreThreshold,
+            maxWaitSeconds = params.maxWaitSeconds,
+            retryCount = params.retryCount,
+            notifyOnFailure = params.notifyOnFailure,
+            notifyOnComplete = params.notifyOnComplete,
+            taskMode = "war",
+        )
+        val conversation = Conversation(
+            id = id,
+            messages = emptyList(),
+            createdAt = now,
+            updatedAt = now,
+            title = folderTitle,
+            type = Conversation.TYPE_WAR_MODEL,
+            parentId = taskId,
+            metadataJson = metadata.encode(),
+        )
+        conversationStorage.saveConversation(conversation)
+        return id
+    }
+
+    override suspend fun createWarResultConversation(taskId: String): String {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val id = Uuid.random().toString()
+        val conversation = Conversation(
+            id = id,
+            messages = emptyList(),
+            createdAt = now,
+            updatedAt = now,
+            title = Conversation.WAR_RESULT_TITLE,
+            type = Conversation.TYPE_WAR_RESULT,
+            parentId = taskId,
+            metadataJson = ConversationMetadata(taskMode = "war").encode(),
+        )
+        conversationStorage.saveConversation(conversation)
+        return id
+    }
+
+    override fun saveWarTaskResult(taskId: String, result: WarTaskResult) {
+        val task = savedConversations.value.find { it.id == taskId } ?: return
+        val meta = task.metadata().copy(
+            status = CollaborationModelStatus.COMPLETED.name,
+            warResultJson = result.encodeJson(),
+        )
+        val updatedTask = task.withMetadata(meta).copy(updatedAt = Clock.System.now().toEpochMilliseconds())
+        conversationStorage.saveConversation(updatedTask)
+
+        val resultConv = savedConversations.value.find {
+            it.parentId == taskId && it.type == Conversation.TYPE_WAR_RESULT
+        }
+        if (resultConv != null) {
+            val resultMeta = resultConv.metadata().copy(warResultJson = result.encodeJson())
+            conversationStorage.saveConversation(
+                resultConv.withMetadata(resultMeta).copy(updatedAt = Clock.System.now().toEpochMilliseconds()),
+            )
+        }
     }
 
     private fun messageToHistory(m: Conversation.Message): History {

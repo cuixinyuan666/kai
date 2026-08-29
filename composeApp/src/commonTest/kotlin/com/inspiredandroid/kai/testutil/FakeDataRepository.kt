@@ -543,6 +543,24 @@ class FakeDataRepository : DataRepository {
         response: String?,
     ) {}
 
+    override suspend fun createWarTask(
+        question: String,
+        params: com.inspiredandroid.kai.data.war.WarWizardParams,
+        summaryRef: com.inspiredandroid.kai.data.collaboration.ModelRef,
+    ): String = "fake-war-task"
+
+    override suspend fun createWarModelConversation(
+        taskId: String,
+        ref: com.inspiredandroid.kai.data.collaboration.ModelRef,
+        folderTitle: String,
+        question: String,
+        params: com.inspiredandroid.kai.data.war.WarWizardParams,
+    ): String = "fake-war-model"
+
+    override suspend fun createWarResultConversation(taskId: String): String = "fake-war-result"
+
+    override fun saveWarTaskResult(taskId: String, result: com.inspiredandroid.kai.data.war.WarTaskResult) {}
+
     override fun getChatMode(): ChatMode = ChatMode.SINGLE
     override fun setChatMode(mode: ChatMode) {}
     override fun getCollaborationConfig(): CollaborationConfig = CollaborationConfig()

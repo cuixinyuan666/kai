@@ -6,6 +6,8 @@
 
 Collaboration sends one user question to every configured model whose **model-test total score is strictly greater than** a threshold you choose in the wizard. Each model runs in its own conversation using the same single-mode pipeline (tools, memory, plan, sandbox session). Results are stored under a three-level folder tree in chat history.
 
+For multi-round analysis and per-aspect voting, use **战争模式** (see [war-mode.md](war-mode.md)).
+
 ## Starting a task
 
 1. In the chat screen, tap **协作模式** (not the main send box — this opens the wizard).

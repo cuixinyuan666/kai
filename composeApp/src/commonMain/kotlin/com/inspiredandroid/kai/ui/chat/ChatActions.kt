@@ -46,6 +46,15 @@ data class ChatActions(
     val retryCollaborationTask: (String) -> Unit,
     val setCollaborationModelScore: (String, Double) -> Unit,
     val navigateCollaborationModel: (Int) -> Unit,
+    // 战争模式
+    val openWarWizard: () -> Unit,
+    val dismissWarWizard: () -> Unit,
+    val startWarTask: (com.inspiredandroid.kai.data.war.WarWizardParams) -> Unit,
+    val stopWar: () -> Unit,
+    val clearWarNotification: () -> Unit,
+    val openWarResultView: (String) -> Unit,
+    val closeWarResultView: () -> Unit,
+    val copyPlainText: (String) -> Unit,
     val optimizePrompt: (String) -> Unit,
     val clearPendingPromptText: () -> Unit,
     /** 用户消息“重新发送”：截断到该消息之前，再以原文重新提问。 */

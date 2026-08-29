@@ -38,11 +38,17 @@ data class Conversation(
         const val TYPE_FOLDER = "folder"
         const val TYPE_COLLABORATION_TASK = "collaboration_task"
         const val TYPE_COLLABORATION_MODEL = "collaboration_model"
+        const val TYPE_WAR_TASK = "war_task"
+        const val TYPE_WAR_MODEL = "war_model"
+        const val TYPE_WAR_RESULT = "war_result"
 
         const val FOLDER_SINGLE_MODE_ID = "folder-single-mode"
         const val FOLDER_COLLABORATION_MODE_ID = "folder-collaboration-mode"
+        const val FOLDER_WAR_MODE_ID = "folder-war-mode"
         const val FOLDER_SINGLE_MODE_TITLE = "单一模式"
         const val FOLDER_COLLABORATION_MODE_TITLE = "协作模式"
+        const val FOLDER_WAR_MODE_TITLE = "战争模式"
+        const val WAR_RESULT_TITLE = "任务结果"
     }
 
     @OptIn(ExperimentalSerializationApi::class)
@@ -98,6 +104,10 @@ data class ConversationMetadata(
     val retryCount: Int? = null,
     val notifyOnFailure: Boolean? = null,
     val notifyOnComplete: Boolean? = null,
+    val taskMode: String? = null,
+    val warResultJson: String? = null,
+    val summaryModelInstanceId: String? = null,
+    val summaryModelId: String? = null,
 )
 
 enum class CollaborationModelStatus {

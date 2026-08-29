@@ -118,6 +118,13 @@ data class ChatUiState(
     val showHistoryTree: Boolean = false,
     val pendingPromptText: String? = null,
     val isOptimizingPrompt: Boolean = false,
+    // 战争模式
+    val showWarWizard: Boolean = false,
+    val isWarRunning: Boolean = false,
+    val warEvents: List<com.inspiredandroid.kai.data.war.WarEvent> = emptyList(),
+    val warSummary: String? = null,
+    val warNotification: String? = null,
+    val warResultViewTaskId: String? = null,
 ) {
     val heartbeatConversationId: String?
         get() = savedConversations.firstOrNull { it.isHeartbeat }?.id

@@ -35,6 +35,21 @@ class ConversationFolderManagerTest {
     }
 
     @Test
+    fun `ensureHierarchy assigns war tasks to war mode folder`() {
+        val warTask = Conversation(
+            id = "war-task-1",
+            messages = emptyList(),
+            createdAt = 1000L,
+            updatedAt = 2000L,
+            title = "2026-08-29-任务1",
+            type = Conversation.TYPE_WAR_TASK,
+        )
+        val result = ConversationFolderManager.ensureHierarchy(listOf(warTask))
+        assertNotNull(result.find { it.id == Conversation.FOLDER_WAR_MODE_ID })
+        assertEquals(Conversation.FOLDER_WAR_MODE_ID, result.find { it.id == "war-task-1" }?.parentId)
+    }
+
+    @Test
     fun `childrenOf returns direct children sorted by updatedAt`() {
         val parentId = Conversation.FOLDER_COLLABORATION_MODE_ID
         val conversations = ConversationFolderManager.ensureHierarchy(
@@ -66,8 +81,9 @@ class ConversationFolderManagerTest {
     fun `ensureHierarchy is stable when roots already exist`() {
         val withRoots = ConversationFolderManager.ensureHierarchy(emptyList())
         val again = ConversationFolderManager.ensureHierarchy(withRoots)
-        assertEquals(2, again.count { it.type == Conversation.TYPE_FOLDER })
+        assertEquals(3, again.count { it.type == Conversation.TYPE_FOLDER })
         assertTrue(again.any { it.id == Conversation.FOLDER_SINGLE_MODE_ID })
         assertTrue(again.any { it.id == Conversation.FOLDER_COLLABORATION_MODE_ID })
+        assertTrue(again.any { it.id == Conversation.FOLDER_WAR_MODE_ID })
     }
 }

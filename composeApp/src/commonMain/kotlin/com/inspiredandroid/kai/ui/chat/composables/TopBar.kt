@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.outlined.Gavel
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -60,10 +61,18 @@ internal fun TopBar(
     isCollaborating: Boolean = false,
     showCollaborationWizard: Boolean = false,
     onOpenCollaborationWizard: () -> Unit = {},
+    isWarRunning: Boolean = false,
+    showWarWizard: Boolean = false,
+    onOpenWarWizard: () -> Unit = {},
     navigationTabBar: (@Composable () -> Unit)? = null,
 ) {
     val collaborationTint = if (isCollaborating || showCollaborationWizard) {
         Color(0xFF81C784)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val warTint = if (isWarRunning || showWarWizard) {
+        Color(0xFFE57373)
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -88,6 +97,7 @@ internal fun TopBar(
             }
             Row(modifier = Modifier.align(Alignment.CenterEnd)) {
                 CollaborationModeButton(collaborationTint, onOpenCollaborationWizard)
+                WarModeButton(warTint, onOpenWarWizard)
                 if (textToSpeech != null) {
                     SpeechToggleButton(textToSpeech, isSpeechOutputEnabled, isSpeaking, actions)
                 }
@@ -101,6 +111,7 @@ internal fun TopBar(
             )
             Spacer(Modifier.weight(1f))
             CollaborationModeButton(collaborationTint, onOpenCollaborationWizard)
+            WarModeButton(warTint, onOpenWarWizard)
             if (textToSpeech != null) {
                 SpeechToggleButton(textToSpeech, isSpeechOutputEnabled, isSpeaking, actions)
             }
@@ -127,6 +138,19 @@ private fun CollaborationModeButton(tint: Color, onClick: () -> Unit) {
             Icon(
                 imageVector = Icons.Filled.Groups,
                 contentDescription = "协作模式",
+                tint = tint,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WarModeButton(tint: Color, onClick: () -> Unit) {
+    HoverTooltip("战争模式") {
+        IconButton(onClick = onClick, modifier = Modifier.handCursor()) {
+            Icon(
+                imageVector = Icons.Outlined.Gavel,
+                contentDescription = "战争模式",
                 tint = tint,
             )
         }
