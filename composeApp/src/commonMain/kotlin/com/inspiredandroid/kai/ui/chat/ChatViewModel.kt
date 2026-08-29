@@ -111,6 +111,8 @@ class ChatViewModel(
         resendUserMessage = ::resendUserMessage,
     )
     private val freeModeNames: Map<FreeMode, String> = FreeMode.entries.associateWith { "Free ${it.modelId.replaceFirstChar { c -> c.uppercase() }}" }
+    /** Loaded asynchronously — [getString] is suspend and must not run inside [combine]. */
+    private val untitledConversationTitle = MutableStateFlow("")
     private var currentJob: Job? = null
     private var pendingConversationDeleteJob: Job? = null
     private var collaborationTaskRunner: CollaborationTaskRunner? = null
@@ -125,6 +127,12 @@ class ChatViewModel(
 
     init {
         updateAvailableServices()
+
+        viewModelScope.launch {
+            untitledConversationTitle.value = runCatching {
+                getString(Res.string.conversation_untitled)
+            }.getOrDefault("")
+        }
 
         // Keep restoreCurrentConversation off the main thread; see issue #197 (large persisted
         // tool outputs caused ANRs when JSON-decoded synchronously during VM construction).
@@ -190,14 +198,27 @@ class ChatViewModel(
         }
     }
 
+    private data class ConversationListSnapshot(
+        val state: ChatUiState,
+        val history: List<History>,
+        val conversations: List<Conversation>,
+        val conversationId: String?,
+        val hasUnreadHeartbeat: Boolean,
+    )
+
     val state = combine(
-        _state,
-        dataRepository.chatHistory,
-        dataRepository.savedConversations,
-        dataRepository.currentConversationId,
-        dataRepository.hasUnreadHeartbeat,
-    ) { state, history, conversations, conversationId, hasUnreadHeartbeat ->
-        val summaries = conversations
+        combine(
+            _state,
+            dataRepository.chatHistory,
+            dataRepository.savedConversations,
+            dataRepository.currentConversationId,
+            dataRepository.hasUnreadHeartbeat,
+        ) { state, history, conversations, conversationId, hasUnreadHeartbeat ->
+            ConversationListSnapshot(state, history, conversations, conversationId, hasUnreadHeartbeat)
+        },
+        untitledConversationTitle,
+    ) { snapshot, untitledTitle ->
+        val summaries = snapshot.conversations
             .filter {
                 it.type != Conversation.TYPE_HEARTBEAT &&
                     it.type != Conversation.TYPE_FOLDER &&
@@ -211,7 +232,7 @@ class ChatViewModel(
                 val meta = it.metadata()
                 ConversationSummary(
                     id = it.id,
-                    title = if (isHeartbeat) "" else it.title.ifEmpty { getString(Res.string.conversation_untitled) },
+                    title = if (isHeartbeat) "" else it.title.ifEmpty { untitledTitle },
                     updatedAt = it.updatedAt,
                     isHeartbeat = isHeartbeat,
                     isInteractive = isInteractive,
@@ -224,13 +245,13 @@ class ChatViewModel(
                     collaborationQuestion = meta.collaborationQuestion,
                 )
             }
-        state.copy(
-            history = history.toImmutableList(),
+        snapshot.state.copy(
+            history = snapshot.history.toImmutableList(),
             supportedFileExtensions = dataRepository.supportedFileExtensions().toImmutableList(),
             savedConversations = summaries.toImmutableList(),
-            folderConversations = conversations.toImmutableList(),
-            currentConversationId = conversationId,
-            hasUnreadHeartbeat = hasUnreadHeartbeat,
+            folderConversations = snapshot.conversations.toImmutableList(),
+            currentConversationId = snapshot.conversationId,
+            hasUnreadHeartbeat = snapshot.hasUnreadHeartbeat,
             installedSkills = dataRepository.getInstalledSkills().toImmutableList(),
         )
     }.distinctUntilChanged().stateIn(

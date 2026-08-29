@@ -34,6 +34,7 @@ import com.inspiredandroid.kai.network.tools.ToolInfo
 import com.inspiredandroid.kai.tools.CommonTools
 import com.inspiredandroid.kai.ui.chat.History
 import com.inspiredandroid.kai.ui.settings.SettingsModel
+import com.inspiredandroid.kai.ui.settings.SettingsTab
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -707,4 +708,12 @@ class FakeDataRepository : DataRepository {
     override suspend fun importLocalModel(source: PlatformFile): ModelImportResult = ModelImportResult.Failure(ModelImportError.COPY_FAILED)
     override fun cancelLocalModelImport() {}
     override suspend fun deleteLocalModel(modelId: String) {}
+
+    private var settingsTab: String? = null
+
+    override fun getSettingsTab(): String? = settingsTab
+
+    override fun setSettingsTab(tab: String) {
+        settingsTab = tab
+    }
 }
