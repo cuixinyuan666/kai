@@ -1,3 +1,8 @@
+## v3.5.4 — 2026-08-29
+
+### Fixes
+- ChatViewModel no longer crashes when loading dual-mode folder conversations (legacy rows without folder metadata)
+
 ## v3.5.3 — 2026-08-27
 
 ### Changes
