@@ -1,6 +1,6 @@
 [versions]
 agp = "9.3.1"
-appVersion = "3.5.5"
+appVersion = "3.5.6"
 vosk = "0.3.38"
 jna = "5.16.0"
 android-versionCode = "122"
