@@ -1,3 +1,9 @@
+## v3.5.6 — 2026-08-30
+
+### Fixes
+- Collaboration mode: clear stuck loading when browsing chat history folders; reset history tree to root from top bar
+- War mode: auto-open result view with progress on start; clear loading state on errors/cancel; fix「查看各模型对话」navigation
+
 ## v3.5.5 — 2026-08-29
 
 ### Features
