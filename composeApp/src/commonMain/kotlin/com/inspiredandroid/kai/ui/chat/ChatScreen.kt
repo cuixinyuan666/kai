@@ -583,6 +583,7 @@ private fun ChatModeScreen(
                 onToggleSandbox = { isSandboxOpen = !isSandboxOpen },
                 onShowHistory = {
                     keyboardController?.hide()
+                    uiState.actions.openHistoryTreeAtRoot()
                     showHistorySheet = true
                 },
                 chatMode = uiState.chatMode,
@@ -964,7 +965,7 @@ private fun ChatModeScreen(
                 }
             }
 
-            if (!isSandboxOpen && uiState.collaborationModelViewId == null) {
+            if (!isSandboxOpen && uiState.collaborationModelViewId == null && uiState.warResultViewTaskId == null) {
                 QuestionInput(
                     files = uiState.files,
                     addFile = uiState.actions.addFile,
@@ -973,7 +974,7 @@ private fun ChatModeScreen(
                     supportedFileExtensions = uiState.supportedFileExtensions,
                     textState = questionInputText,
                     onTextStateChange = { questionInputText = it },
-                    isLoading = uiState.isLoading || uiState.isCollaborating,
+                    isLoading = uiState.isLoading || uiState.isCollaborating || uiState.isWarRunning,
                     cancel = uiState.actions.cancel,
                     availableServices = uiState.availableServices,
                     onSelectService = uiState.actions.selectService,
@@ -1073,7 +1074,7 @@ private fun ChatModeScreen(
                     onBack = uiState.actions.closeWarResultView,
                     onCopy = uiState.actions.copyPlainText,
                     onOpenModelFolder = {
-                        uiState.actions.openHistoryFolder(warTaskId)
+                        uiState.actions.openWarTaskModels(warTaskId)
                     },
                 )
             }

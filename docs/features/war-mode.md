@@ -2,8 +2,6 @@
 
 **Last verified:** 2026-08-29
 
-## Overview
-
 War mode runs a **two-round multi-model workflow**: every eligible model answers the same task in parallel (round 1), a **summary model** extracts common ground and disputed aspects, then each successful model votes agree/disagree on each disputed aspect in one batched prompt (round 2). Results show per-aspect tallies such as **同意 3/5 · 不同意 2/5**.
 
 Collaboration mode only broadcasts one question and stores per-model threads. War mode adds analysis and voting with a task-level result dashboard.

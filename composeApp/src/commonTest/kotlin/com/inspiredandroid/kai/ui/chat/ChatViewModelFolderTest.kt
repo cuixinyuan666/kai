@@ -62,6 +62,7 @@ class ChatViewModelFolderTest {
             assertEquals(hierarchy.size, state.folderConversations.size)
             assertTrue(state.folderConversations.any { it.id == Conversation.FOLDER_SINGLE_MODE_ID })
             assertTrue(state.folderConversations.any { it.id == Conversation.FOLDER_COLLABORATION_MODE_ID })
+            assertTrue(state.folderConversations.any { it.id == Conversation.FOLDER_WAR_MODE_ID })
             assertEquals(1, state.savedConversations.size)
             assertEquals("chat-1", state.savedConversations.single().id)
             cancelAndIgnoreRemainingEvents()

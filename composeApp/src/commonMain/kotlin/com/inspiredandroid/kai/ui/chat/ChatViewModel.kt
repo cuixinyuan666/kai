@@ -104,6 +104,7 @@ class ChatViewModel(
         openCollaborationModelView = ::openCollaborationModelView,
         closeCollaborationModelView = ::closeCollaborationModelView,
         openHistoryFolder = ::openHistoryFolder,
+        openHistoryTreeAtRoot = ::openHistoryTreeAtRoot,
         closeHistoryFolder = ::closeHistoryFolder,
         closeHistoryTreeSheet = ::closeHistoryTreeSheet,
         copyConversationBranch = ::copyConversationBranch,
@@ -119,6 +120,7 @@ class ChatViewModel(
         clearWarNotification = ::clearWarNotification,
         openWarResultView = ::openWarResultView,
         closeWarResultView = ::closeWarResultView,
+        openWarTaskModels = ::openWarTaskModels,
         copyPlainText = ::copyPlainText,
         optimizePrompt = ::optimizePrompt,
         clearPendingPromptText = ::clearPendingPromptText,
@@ -562,7 +564,6 @@ class ChatViewModel(
                         s.copy(
                             isCollaborating = false,
                             collaborationSummary = summary,
-                            historyTreeParentId = Conversation.FOLDER_COLLABORATION_MODE_ID,
                         )
                     }
                 }
@@ -570,7 +571,17 @@ class ChatViewModel(
         )
         collaborationTaskRunner = runner
         viewModelScope.launch(backgroundDispatcher) {
-            runner.runTask(params)
+            try {
+                runner.runTask(params)
+            } catch (e: Exception) {
+                _state.update { s ->
+                    s.copy(collaborationNotification = "协作任务失败：${e.message ?: "未知错误"}")
+                }
+            } finally {
+                _state.update { s ->
+                    if (s.isCollaborating) s.copy(isCollaborating = false) else s
+                }
+            }
         }
     }
 
@@ -604,6 +615,10 @@ class ChatViewModel(
 
     private fun openHistoryFolder(folderId: String) {
         _state.update { it.copy(historyTreeParentId = folderId, showHistoryTree = true) }
+    }
+
+    private fun openHistoryTreeAtRoot() {
+        _state.update { it.copy(historyTreeParentId = null, showHistoryTree = true) }
     }
 
     private fun closeHistoryFolder() {
@@ -654,8 +669,11 @@ class ChatViewModel(
         val timeout = timeoutSec.toLong() * 1000L
         viewModelScope.launch(backgroundDispatcher) {
             _state.update { it.copy(isCollaborating = true) }
-            dataRepository.retryCollaborationModel(conversationId, timeout)
-            _state.update { it.copy(isCollaborating = false) }
+            try {
+                dataRepository.retryCollaborationModel(conversationId, timeout)
+            } finally {
+                _state.update { it.copy(isCollaborating = false) }
+            }
         }
     }
 
@@ -780,6 +798,10 @@ class ChatViewModel(
         val runner = WarTaskRunner(
             repository = dataRepository,
             listener = object : WarListener {
+                override fun onTaskStarted(taskId: String) {
+                    _state.update { s -> s.copy(warResultViewTaskId = taskId) }
+                }
+
                 override fun onEvent(event: WarEvent) {
                     _state.update { s -> s.copy(warEvents = s.warEvents + event) }
                 }
@@ -797,8 +819,7 @@ class ChatViewModel(
                         s.copy(
                             isWarRunning = false,
                             warSummary = summary,
-                            warResultViewTaskId = taskId,
-                            historyTreeParentId = Conversation.FOLDER_WAR_MODE_ID,
+                            warResultViewTaskId = taskId.ifBlank { s.warResultViewTaskId },
                         )
                     }
                 }
@@ -806,7 +827,17 @@ class ChatViewModel(
         )
         warTaskRunner = runner
         viewModelScope.launch(backgroundDispatcher) {
-            runner.runTask(params)
+            try {
+                runner.runTask(params)
+            } catch (e: Exception) {
+                _state.update { s ->
+                    s.copy(warNotification = "战争模式失败：${e.message ?: "未知错误"}")
+                }
+            } finally {
+                _state.update { s ->
+                    if (s.isWarRunning) s.copy(isWarRunning = false) else s
+                }
+            }
         }
     }
 
@@ -831,6 +862,16 @@ class ChatViewModel(
                 warResultViewTaskId = null,
                 historyTreeParentId = taskId ?: it.historyTreeParentId,
                 showHistoryTree = taskId != null,
+            )
+        }
+    }
+
+    private fun openWarTaskModels(taskId: String) {
+        _state.update {
+            it.copy(
+                warResultViewTaskId = null,
+                historyTreeParentId = taskId,
+                showHistoryTree = true,
             )
         }
     }
@@ -891,6 +932,8 @@ class ChatViewModel(
     }
 
     private fun loadConversation(id: String) {
+        stopCollaboration()
+        stopWar()
         currentJob?.cancel()
         currentJob = null
         val conversation = dataRepository.savedConversations.value.find { it.id == id }
@@ -903,6 +946,9 @@ class ChatViewModel(
                 showFreeProviderSuggestions = false,
                 isInteractiveMode = isInteractive,
                 isLoading = false,
+                collaborationModelViewId = null,
+                warResultViewTaskId = null,
+                showHistoryTree = false,
             )
         }
     }
@@ -961,8 +1007,9 @@ class ChatViewModel(
     }
 
     private fun startNewChat() {
-        // 终止可能正在运行的协作，确保左上角"+"能开启新一轮对话（单一或协作均可）。
+        // 终止可能正在运行的协作/战争任务，确保左上角"+"能开启新一轮对话。
         stopCollaboration()
+        stopWar()
         currentJob?.cancel()
         currentJob = null
         dataRepository.startNewChat()
@@ -979,6 +1026,12 @@ class ChatViewModel(
                 collaborationNotification = null,
                 showCollaborationWizard = false,
                 collaborationModelViewId = null,
+                showWarWizard = false,
+                isWarRunning = false,
+                warEvents = emptyList(),
+                warSummary = null,
+                warNotification = null,
+                warResultViewTaskId = null,
             )
         }
     }

@@ -84,6 +84,7 @@ data class WarTaskResult(
 )
 
 interface WarListener {
+    fun onTaskStarted(taskId: String)
     fun onEvent(event: WarEvent)
     fun onNotify(title: String, body: String)
     fun onModelStatusChanged(conversationId: String, status: CollaborationModelStatus)

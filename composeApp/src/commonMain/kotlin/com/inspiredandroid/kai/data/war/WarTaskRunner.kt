@@ -45,6 +45,7 @@ class WarTaskRunner(
             summaryRef = summaryRef,
         )
         repository.createWarResultConversation(taskId)
+        listener.onTaskStarted(taskId)
 
         val timeoutMs = params.maxWaitSeconds.coerceAtLeast(1).toLong() * 1000L
 
@@ -116,6 +117,7 @@ class WarTaskRunner(
 
         if (cancelled) {
             listener.onEvent(WarEvent(WarPhase.CANCELLED, "任务已取消。"))
+            listener.onTaskFinished(taskId, "任务已取消。")
             return
         }
 
