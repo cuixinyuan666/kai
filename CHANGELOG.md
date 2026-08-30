@@ -1,3 +1,9 @@
+## v3.5.7 — 2026-08-30
+
+### Fixes
+- Chat history: single-mode conversations appear at the root of the history sheet again after sending a message (no need to open the「单一模式」folder)
+- Conversations are persisted when the user sends a message, not only after the assistant reply
+
 ## v3.5.6 — 2026-08-30
 
 ### Fixes
