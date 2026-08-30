@@ -46,6 +46,31 @@ import com.inspiredandroid.kai.ui.chat.ChatActions
 import com.inspiredandroid.kai.ui.handCursor
 import kotlinx.collections.immutable.ImmutableList
 
+/**
+ * Root history lists single-mode chats directly (matching pre-folder UX) plus
+ * collaboration and war mode folders. The single-mode folder itself is omitted
+ * here because its children are already shown at the root.
+ */
+internal fun rootHistoryItems(
+    conversations: List<Conversation>,
+    rootIds: List<String> = listOf(
+        Conversation.FOLDER_SINGLE_MODE_ID,
+        Conversation.FOLDER_COLLABORATION_MODE_ID,
+        Conversation.FOLDER_WAR_MODE_ID,
+    ),
+): List<Conversation> {
+    val singleChats = ConversationFolderManager.childrenOf(
+        Conversation.FOLDER_SINGLE_MODE_ID,
+        conversations,
+    ).filter {
+        it.type == Conversation.TYPE_CHAT || it.type == Conversation.TYPE_INTERACTIVE
+    }
+    val modeFolders = conversations.filter {
+        it.id in rootIds && it.id != Conversation.FOLDER_SINGLE_MODE_ID
+    }
+    return singleChats + modeFolders
+}
+
 @Composable
 internal fun ChatHistoryTreeSheet(
     conversations: ImmutableList<Conversation>,
@@ -108,12 +133,16 @@ internal fun ChatHistoryTreeSheet(
             }
 
             val rawItems = when (parentId) {
-                null -> conversations.filter { it.id in rootIds }
+                null -> rootHistoryItems(conversations, rootIds)
                 else -> ConversationFolderManager.childrenOf(parentId, conversations)
             }
-            val items = remember(rawItems, sortReverse) {
-                val sorted = rawItems.sortedBy { it.title.lowercase() }
-                if (sortReverse) sorted.reversed() else sorted
+            val items = remember(rawItems, sortReverse, parentId) {
+                if (parentId == null) {
+                    if (sortReverse) rawItems.reversed() else rawItems
+                } else {
+                    val sorted = rawItems.sortedBy { it.title.lowercase() }
+                    if (sortReverse) sorted.reversed() else sorted
+                }
             }
 
             val isCollaborationTaskLevel = parentId == Conversation.FOLDER_COLLABORATION_MODE_ID

@@ -958,6 +958,7 @@ class RemoteDataRepository(
                     )
                 }
             }
+            saveCurrentConversation()
         }
 
         compactHistoryIfNeeded()
@@ -1587,6 +1588,10 @@ class RemoteDataRepository(
         )
 
         conversationStorage.saveConversation(conversation)
+        val ensured = ConversationFolderManager.ensureHierarchy(conversationStorage.conversations.value)
+        if (ensured != conversationStorage.conversations.value) {
+            conversationStorage.replaceAll(ensured)
+        }
     }
 
     override fun clearHistory() {

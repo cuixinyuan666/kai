@@ -1,6 +1,6 @@
 # Chat & Conversations
 
-**Last verified:** 2026-08-09
+**Last verified:** 2026-08-30
 
 Kai's chat system manages the message history, conversation persistence, file attachments, and speech output. Conversations are service-independent — switching providers does not affect which conversation is loaded or restored. Multiple conversations are persisted and browsable via a history sheet.
 
@@ -23,8 +23,8 @@ Auto-derived from the first user message when a conversation is saved for the fi
 - The "current conversation" pointer is persisted across launches: opening the app restores whichever conversation was last active, including an empty new chat the user explicitly started
 - If the persisted pointer references a conversation that no longer exists (or is null because the user started a new chat), the app opens to an empty new chat
 - "New Chat" clears history, unsets the current conversation pointer, and persists the empty state — so an unused new chat survives an app restart
-- A new conversation ID (UUID) is generated on first successful save (after the first assistant response) and immediately becomes the persisted current pointer
-- Conversations are saved after each assistant response
+- A new conversation ID (UUID) is allocated when the user sends the first message; the conversation is persisted immediately and updated after each assistant response
+- Conversations are saved when the user sends a message and again after each assistant response
 - Only the most recent 20 exchanges are persisted per chat conversation; heartbeat conversations have a separate, larger cap of 50 messages so longer automation runs are not truncated as aggressively
 - Multiple conversations are persisted — starting a new chat preserves previous conversations
 - Conversations are service-independent — switching services does not affect which conversation is loaded
@@ -33,14 +33,13 @@ Auto-derived from the first user message when a conversation is saved for the fi
 
 ## Chat History
 
-- A history icon appears in the top bar when saved conversations other than the current one exist
-- Tapping it opens a bottom sheet listing all chat conversations sorted by last updated (newest first)
-- Each item shows the title and formatted date
-- Non-interactive conversations are outlined with a primary-colored border; interactive-mode conversations get an animated gradient border. The active conversation's title is rendered in the primary color (inactive titles use onBackground)
-- Tapping an item loads that conversation and dismisses the sheet
-- Each item has a delete button that defers deletion with a snackbar "Undo" option (~4 seconds) before the conversation is permanently removed. The snackbar appears inside the history sheet so it remains visible while the sheet is open, and the sheet stays open so multiple conversations can be deleted in sequence
-- Deleting the active conversation clears the chat
-- Heartbeat conversations are included in the history list with a "Heartbeat" label badge, and can also be accessed via the heartbeat banner
+- A history icon in the top bar opens a bottom sheet of saved conversations
+- **Single-mode chats** (normal and interactive) appear directly at the root of the history sheet, sorted by last updated (newest first)
+- **Collaboration** and **War mode** tasks live under their respective mode folders; tap a folder to browse tasks and model sub-conversations
+- The legacy flat list behavior is preserved for single-mode chats; only collaboration and war workflows use the folder tree
+- Each item shows the title; tapping loads that conversation and dismisses the sheet
+- Delete, copy, and undo behaviors match the previous flat history sheet where applicable
+- Heartbeat conversations are included with a "Heartbeat" label badge, and can also be accessed via the heartbeat banner
 
 ## Message Sending
 
