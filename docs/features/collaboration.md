@@ -1,6 +1,6 @@
 # Collaboration mode
 
-**Last verified:** 2026-08-29
+**Last verified:** 2026-08-30
 
 ## Overview
 

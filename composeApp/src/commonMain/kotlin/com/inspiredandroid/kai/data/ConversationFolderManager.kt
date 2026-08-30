@@ -41,7 +41,8 @@ object ConversationFolderManager {
                 conv.type != Conversation.TYPE_HEARTBEAT
         }
         for (orphan in orphans) {
-            val parentId = when (orphan.type) {
+            val normalized = normalizeConversationType(orphan)
+            val parentId = when (normalized.type) {
                 Conversation.TYPE_COLLABORATION_TASK,
                 Conversation.TYPE_COLLABORATION_MODEL,
                 -> Conversation.FOLDER_COLLABORATION_MODE_ID
@@ -53,11 +54,41 @@ object ConversationFolderManager {
             }
             val idx = result.indexOfFirst { it.id == orphan.id }
             if (idx >= 0) {
-                result[idx] = orphan.copy(parentId = parentId)
+                result[idx] = normalized.copy(parentId = parentId)
             }
         }
 
-        return result
+        return result.map { normalizeConversationType(it) }
+    }
+
+    /**
+     * Repairs legacy rows whose [Conversation.type] stayed `chat` after being moved under
+     * collaboration/war folders — without this, history clicks fall through to
+     * [loadConversation] and show a blank screen.
+     */
+    internal fun normalizeConversationType(conv: Conversation): Conversation {
+        if (conv.type == Conversation.TYPE_FOLDER || conv.type == Conversation.TYPE_HEARTBEAT) {
+            return conv
+        }
+        if (conv.type != Conversation.TYPE_CHAT && conv.type != Conversation.TYPE_INTERACTIVE) {
+            return conv
+        }
+
+        val meta = conv.metadata()
+        return when (conv.parentId) {
+            Conversation.FOLDER_COLLABORATION_MODE_ID -> conv.copy(type = Conversation.TYPE_COLLABORATION_TASK)
+            Conversation.FOLDER_WAR_MODE_ID -> conv.copy(type = Conversation.TYPE_WAR_TASK)
+            null -> conv
+            else -> when {
+                conv.title == Conversation.WAR_RESULT_TITLE ->
+                    conv.copy(type = Conversation.TYPE_WAR_RESULT)
+                meta.taskMode == "war" ->
+                    conv.copy(type = Conversation.TYPE_WAR_MODEL)
+                meta.instanceId != null || meta.collaborationQuestion != null ->
+                    conv.copy(type = Conversation.TYPE_COLLABORATION_MODEL)
+                else -> conv
+            }
+        }
     }
 
     fun childrenOf(parentId: String, conversations: List<Conversation>): List<Conversation> =

@@ -1588,6 +1588,10 @@ class RemoteDataRepository(
         )
 
         conversationStorage.saveConversation(conversation)
+        ensureStoredHierarchy()
+    }
+
+    private fun ensureStoredHierarchy() {
         val ensured = ConversationFolderManager.ensureHierarchy(conversationStorage.conversations.value)
         if (ensured != conversationStorage.conversations.value) {
             conversationStorage.replaceAll(ensured)
@@ -1633,10 +1637,7 @@ class RemoteDataRepository(
     // Conversation management
     override fun loadConversations() {
         conversationStorage.loadConversations()
-        val ensured = ConversationFolderManager.ensureHierarchy(conversationStorage.conversations.value)
-        if (ensured != conversationStorage.conversations.value) {
-            conversationStorage.replaceAll(ensured)
-        }
+        ensureStoredHierarchy()
     }
 
     override fun loadConversation(id: String) {
@@ -2412,6 +2413,7 @@ class RemoteDataRepository(
             metadataJson = metadata.encode(),
         )
         conversationStorage.saveConversation(task)
+        ensureStoredHierarchy()
         return id
     }
 
@@ -2446,6 +2448,7 @@ class RemoteDataRepository(
             metadataJson = metadata.encode(),
         )
         conversationStorage.saveConversation(conversation)
+        ensureStoredHierarchy()
         return id
     }
 
@@ -2491,6 +2494,7 @@ class RemoteDataRepository(
             metadataJson = metadata.encode(),
         )
         conversationStorage.saveConversation(task)
+        ensureStoredHierarchy()
         return id
     }
 
@@ -2526,6 +2530,7 @@ class RemoteDataRepository(
             metadataJson = metadata.encode(),
         )
         conversationStorage.saveConversation(conversation)
+        ensureStoredHierarchy()
         return id
     }
 
@@ -2543,6 +2548,7 @@ class RemoteDataRepository(
             metadataJson = ConversationMetadata(taskMode = "war").encode(),
         )
         conversationStorage.saveConversation(conversation)
+        ensureStoredHierarchy()
         return id
     }
 
@@ -2564,6 +2570,7 @@ class RemoteDataRepository(
                 resultConv.withMetadata(resultMeta).copy(updatedAt = Clock.System.now().toEpochMilliseconds()),
             )
         }
+        ensureStoredHierarchy()
     }
 
     private fun messageToHistory(m: Conversation.Message): History {

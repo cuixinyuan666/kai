@@ -78,6 +78,45 @@ class ConversationFolderManagerTest {
     }
 
     @Test
+    fun `normalizeConversationType repairs chat rows under mode folders`() {
+        val collabTask = Conversation(
+            id = "task-1",
+            messages = emptyList(),
+            createdAt = 1000L,
+            updatedAt = 2000L,
+            title = "2026-08-30-任务1",
+            type = Conversation.TYPE_CHAT,
+            parentId = Conversation.FOLDER_COLLABORATION_MODE_ID,
+            metadataJson = ConversationMetadata(collaborationQuestion = "Q").encode(),
+        )
+        val warTask = collabTask.copy(
+            id = "war-1",
+            parentId = Conversation.FOLDER_WAR_MODE_ID,
+            metadataJson = ConversationMetadata(collaborationQuestion = "Q", taskMode = "war").encode(),
+        )
+        val model = Conversation(
+            id = "model-1",
+            messages = emptyList(),
+            createdAt = 1000L,
+            updatedAt = 2000L,
+            title = "model",
+            type = Conversation.TYPE_CHAT,
+            parentId = "task-1",
+            metadataJson = ConversationMetadata(
+                collaborationQuestion = "Q",
+                instanceId = "inst-1",
+                modelId = "gpt",
+            ).encode(),
+        )
+
+        val normalized = ConversationFolderManager.ensureHierarchy(listOf(collabTask, warTask, model))
+
+        assertEquals(Conversation.TYPE_COLLABORATION_TASK, normalized.find { it.id == "task-1" }?.type)
+        assertEquals(Conversation.TYPE_WAR_TASK, normalized.find { it.id == "war-1" }?.type)
+        assertEquals(Conversation.TYPE_COLLABORATION_MODEL, normalized.find { it.id == "model-1" }?.type)
+    }
+
+    @Test
     fun `ensureHierarchy is stable when roots already exist`() {
         val withRoots = ConversationFolderManager.ensureHierarchy(emptyList())
         val again = ConversationFolderManager.ensureHierarchy(withRoots)

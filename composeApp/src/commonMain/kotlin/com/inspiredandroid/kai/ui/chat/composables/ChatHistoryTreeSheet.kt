@@ -147,6 +147,7 @@ internal fun ChatHistoryTreeSheet(
 
             val isCollaborationTaskLevel = parentId == Conversation.FOLDER_COLLABORATION_MODE_ID
             val isWarTaskLevel = parentId == Conversation.FOLDER_WAR_MODE_ID
+            val isInsideTaskFolder = parentId != null && parentId !in rootIds
 
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
                 items(items, key = { it.id }) { item ->
@@ -155,14 +156,19 @@ internal fun ChatHistoryTreeSheet(
                         showTaskActions = (isCollaborationTaskLevel && item.type == Conversation.TYPE_COLLABORATION_TASK) ||
                             (isWarTaskLevel && item.type == Conversation.TYPE_WAR_TASK),
                         onClick = {
-                            when (item.type) {
-                                Conversation.TYPE_FOLDER -> actions.openHistoryFolder(item.id)
-                                Conversation.TYPE_COLLABORATION_TASK -> actions.openHistoryFolder(item.id)
-                                Conversation.TYPE_WAR_TASK -> onOpenWarResult(item.id)
-                                Conversation.TYPE_WAR_RESULT -> onOpenWarResult(item.parentId ?: item.id)
-                                Conversation.TYPE_COLLABORATION_MODEL,
-                                Conversation.TYPE_WAR_MODEL,
-                                -> onOpenModelView(item.id)
+                            when {
+                                item.type == Conversation.TYPE_FOLDER ->
+                                    actions.openHistoryFolder(item.id)
+                                item.type == Conversation.TYPE_COLLABORATION_TASK || isCollaborationTaskLevel ->
+                                    actions.openHistoryFolder(item.id)
+                                item.type == Conversation.TYPE_WAR_TASK || isWarTaskLevel ->
+                                    onOpenWarResult(item.id)
+                                item.type == Conversation.TYPE_WAR_RESULT ->
+                                    onOpenWarResult(item.parentId ?: item.id)
+                                item.type == Conversation.TYPE_COLLABORATION_MODEL ||
+                                    item.type == Conversation.TYPE_WAR_MODEL ||
+                                    isInsideTaskFolder ->
+                                    onOpenModelView(item.id)
                                 else -> {
                                     actions.loadConversation(item.id)
                                     onDismiss()

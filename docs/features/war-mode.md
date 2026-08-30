@@ -21,7 +21,7 @@ Collaboration mode only broadcasts one question and stores per-model threads. Wa
 | 2 | `2026-08-29-任务1` | One war task |
 | 3 | `任务结果` + model folders | Result metadata + per-model R1/R2 threads |
 
-Tapping a war task opens the **任务结果** view (common points, disputed aspects, vote breakdown). Model folders open the same WeChat-style thread view as collaboration.
+Tapping a war task opens the **任务结果** view (common points, disputed aspects, vote breakdown). Model folders open the same WeChat-style thread view as collaboration. History navigation uses folder context so tasks open the result view even when legacy rows were stored with a generic chat type.
 
 ## Summary model
 

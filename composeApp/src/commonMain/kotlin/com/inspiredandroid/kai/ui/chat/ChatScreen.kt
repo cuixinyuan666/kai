@@ -527,7 +527,7 @@ private fun ChatModeScreen(
         }
     }
     LaunchedEffect(uiState.showHistoryTree) {
-        if (uiState.showHistoryTree) showHistorySheet = true
+        showHistorySheet = uiState.showHistoryTree
     }
     LaunchedEffect(uiState.pendingPromptText) {
         val text = uiState.pendingPromptText
@@ -584,7 +584,6 @@ private fun ChatModeScreen(
                 onShowHistory = {
                     keyboardController?.hide()
                     uiState.actions.openHistoryTreeAtRoot()
-                    showHistorySheet = true
                 },
                 chatMode = uiState.chatMode,
                 isCollaborating = uiState.isCollaborating,
@@ -1088,14 +1087,11 @@ private fun ChatModeScreen(
             actions = uiState.actions,
             onDismiss = {
                 uiState.actions.closeHistoryTreeSheet()
-                showHistorySheet = false
             },
             onOpenModelView = { id ->
-                showHistorySheet = false
                 uiState.actions.openCollaborationModelView(id)
             },
             onOpenWarResult = { taskId ->
-                showHistorySheet = false
                 uiState.actions.openWarResultView(taskId)
             },
             onCopy = { id, level -> uiState.actions.copyConversationBranch(id, level) },

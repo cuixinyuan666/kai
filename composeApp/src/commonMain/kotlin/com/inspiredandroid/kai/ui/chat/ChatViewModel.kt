@@ -596,7 +596,12 @@ class ChatViewModel(
     }
 
     private fun openCollaborationModelView(conversationId: String) {
-        _state.update { it.copy(collaborationModelViewId = conversationId) }
+        _state.update {
+            it.copy(
+                collaborationModelViewId = conversationId,
+                showHistoryTree = false,
+            )
+        }
     }
 
     private fun closeCollaborationModelView() {
@@ -623,7 +628,7 @@ class ChatViewModel(
 
     private fun closeHistoryFolder() {
         val parentId = _state.value.historyTreeParentId ?: return
-        val conversations = dataRepository.savedConversations.value
+        val conversations = ConversationFolderManager.ensureHierarchy(dataRepository.savedConversations.value)
         val newParent = when (parentId) {
             Conversation.FOLDER_SINGLE_MODE_ID,
             Conversation.FOLDER_COLLABORATION_MODE_ID,
