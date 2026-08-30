@@ -1,3 +1,9 @@
+## v3.5.8 — 2026-08-30
+
+### Fixes
+- Chat history: collaboration and war tasks open correctly from the folder tree (legacy rows stored as generic chat no longer show a blank screen)
+- History sheet reopens at the task level after closing a collaboration model view
+
 ## v3.5.7 — 2026-08-30
 
 ### Fixes
