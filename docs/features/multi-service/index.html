@@ -1159,8 +1159,8 @@
 
 
 <h1 id="multi-service">Multi-Service</h1>
-<p><strong>Last verified:</strong> 2026-08-12</p>
-<p>Kai supports 29 LLM providers (plus a built-in Free tier). Each provider uses one of three API formats: <strong>OpenAI-compatible</strong> (most services), <strong>Gemini native</strong>, or <strong>Anthropic native</strong> -- plus <strong>LiteRT on-device</strong> for local inference. Users can configure multiple service instances, reorder them, and Kai automatically falls back through the chain on failure.</p>
+<p><strong>Last verified:</strong> 2026-08-31</p>
+<p>Kai supports 29 LLM providers (plus a built-in Free tier). Each provider uses one of three API formats: <strong>OpenAI-compatible</strong> (most services), <strong>Gemini native</strong>, or <strong>Anthropic native</strong> -- plus <strong>LiteRT on-device</strong> for local inference. Users can configure multiple service instances, reorder them (including APP-FREE), and Kai automatically falls back through the chain on failure. Keyless providers (Kilo, OVH, Pollinations, AI Horde, APP-FREE) show a <strong>NO NEED KEY</strong> badge. SiliconFlow, which was added from the FreeLLMAPI catalog, shows a <strong>FreeLLMAPI</strong> badge; other providers do not.</p>
 <h2 id="concepts">Concepts</h2>
 <h3 id="service">Service</h3>
 <p>A supported LLM provider. Each service is defined by:</p>
@@ -1178,12 +1178,8 @@
 <li>Base URL (relevant for the OpenAI-Compatible API service)</li>
 </ul>
 <h3 id="free-tier">Free Tier</h3>
-<p>A built-in service that requires no API key. Free is never shown in the service picker — it is used as:</p>
-<ul>
-<li>The sole service when no other services are configured</li>
-<li>A last-resort fallback when "Use as fallback" is enabled (default)</li>
-</ul>
-<p>When Free is the only path and the user hits Free FAST/EXPERT rate or quota limits, chat shows a free-provider signup panel (Groq, Cerebras, Gemini, OpenRouter, Ollama Cloud) so they can open an API-key page and continue with a personal free tier. See <a href="../chat/">chat.md</a>.</p>
+<p>APP-FREE is listed like other services in Settings and the chat model dropdown: one <strong>总类</strong> (<code>APP-FREE</code>) with <strong>Fast / Expert</strong> branches, a <strong>NO NEED KEY</strong> badge, and the same model-picker / score logic. Its position in the service list can be dragged like any other source. It is still used as last-resort fallback when "Use as fallback" is enabled, unless the user moved it to the first slot.</p>
+<p>When APP-FREE is the only path and the user hits Free FAST/EXPERT rate or quota limits, chat shows a free-provider signup panel (Groq, Cerebras, Gemini, OpenRouter, Ollama Cloud) so they can open an API-key page and continue with a personal free tier. See <a href="../chat/">chat.md</a>.</p>
 <h2 id="fallback-chain">Fallback Chain</h2>
 <ol>
 <li>Configured instances are tried in the order the user arranged them</li>
@@ -1358,10 +1354,28 @@
 <td>OpenAI-compatible</td>
 </tr>
 <tr>
-<td>OpenCode</td>
+<td>OpenCode API</td>
 <td><code>opencode</code></td>
 <td>Yes</td>
-<td>OpenAI-compatible</td>
+<td>OpenAI-compatible (Zen gateway). Distinct from <strong>OpenCode 终端</strong>.</td>
+</tr>
+<tr>
+<td>OpenCode 终端</td>
+<td><code>opencode-terminal</code></td>
+<td>Yes</td>
+<td>Same Zen gateway as OpenCode API, with thinking / plan / build controls</td>
+</tr>
+<tr>
+<td>SiliconFlow</td>
+<td><code>siliconflow</code></td>
+<td>Yes</td>
+<td>OpenAI-compatible (FreeLLMAPI source)</td>
+</tr>
+<tr>
+<td>SenseNova</td>
+<td><code>sensenova</code></td>
+<td>Yes</td>
+<td>OpenAI-compatible. API keys: <a href="https://platform.sensenova.cn/console/keys">platform.sensenova.cn/console/keys</a></td>
 </tr>
 <tr>
 <td>Public AI</td>

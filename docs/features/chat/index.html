@@ -1191,38 +1191,39 @@
 
 
 <h1 id="chat-conversations">Chat &amp; Conversations</h1>
-<p><strong>Last verified:</strong> 2026-08-09</p>
+<p><strong>Last verified:</strong> 2026-09-01</p>
 <p>Kai's chat system manages the message history, conversation persistence, file attachments, and speech output. Conversations are service-independent — switching providers does not affect which conversation is loaded or restored. Multiple conversations are persisted and browsable via a history sheet.</p>
 <h2 id="concepts">Concepts</h2>
 <h3 id="conversation">Conversation</h3>
-<p>A persisted chat session containing an id (UUID), message list, timestamps (<code>createdAt</code>, <code>updatedAt</code>), a title, and a type (<code>chat</code>, <code>heartbeat</code>, or <code>interactive</code>). Conversations are stored in a local database (browser builds use the settings store) and restored across app launches.</p>
+<p>A persisted chat session containing an id (UUID), message list, timestamps (<code>createdAt</code>, <code>updatedAt</code>), a title, and a type (<code>chat</code>, <code>heartbeat</code>, or <code>interactive</code>). Conversations are stored in a local database (browser builds use the settings store) and remain available from the history sheet after a restart.</p>
 <h3 id="history">History</h3>
 <p>The in-memory message list that drives the UI. Each entry has a role: USER, ASSISTANT, TOOL, or TOOL_EXECUTING. History is the source of truth during a session; it is written to a Conversation on save.</p>
 <h3 id="conversation-title">Conversation Title</h3>
 <p>Auto-derived from the first user message when a conversation is saved for the first time. Truncated to ~50 characters at a word boundary. Once set, titles are not updated.</p>
 <h2 id="conversation-lifecycle">Conversation Lifecycle</h2>
 <ul>
-<li>The "current conversation" pointer is persisted across launches: opening the app restores whichever conversation was last active, including an empty new chat the user explicitly started</li>
+<li>Opening the app does <strong>not</strong> restore the last chat into the main pane. The initial screen shows the CUI name (no spinning progress indicator); saved conversations remain available from the history sheet</li>
 <li>If the persisted pointer references a conversation that no longer exists (or is null because the user started a new chat), the app opens to an empty new chat</li>
-<li>"New Chat" clears history, unsets the current conversation pointer, and persists the empty state — so an unused new chat survives an app restart</li>
-<li>A new conversation ID (UUID) is generated on first successful save (after the first assistant response) and immediately becomes the persisted current pointer</li>
-<li>Conversations are saved after each assistant response</li>
+<li>"New Chat" clears history, unsets the current conversation pointer, and persists the empty state</li>
+<li>A new conversation ID (UUID) is allocated when the user sends the first message; the conversation is persisted immediately and updated after each assistant response</li>
+<li>Conversations are saved when the user sends a message and again after each assistant response</li>
 <li>Only the most recent 20 exchanges are persisted per chat conversation; heartbeat conversations have a separate, larger cap of 50 messages so longer automation runs are not truncated as aggressively</li>
 <li>Multiple conversations are persisted — starting a new chat preserves previous conversations</li>
 <li>Conversations are service-independent — switching services does not affect which conversation is loaded</li>
-<li>Interactive vs normal chat mode is persisted alongside the current pointer, so an empty interactive chat also survives a restart</li>
-<li>On the first launch after upgrading from a build that did not persist the current-conversation pointer, a one-time migration pins the most recently updated conversation as the current pointer so the user resumes where they left off</li>
+<li>Interactive vs normal chat mode is persisted while the app stays open; a restart still opens the empty CUI screen rather than an interactive session</li>
 </ul>
 <h2 id="chat-history">Chat History</h2>
 <ul>
-<li>A history icon appears in the top bar when saved conversations other than the current one exist</li>
-<li>Tapping it opens a bottom sheet listing all chat conversations sorted by last updated (newest first)</li>
-<li>Each item shows the title and formatted date</li>
-<li>Non-interactive conversations are outlined with a primary-colored border; interactive-mode conversations get an animated gradient border. The active conversation's title is rendered in the primary color (inactive titles use onBackground)</li>
-<li>Tapping an item loads that conversation and dismisses the sheet</li>
-<li>Each item has a delete button that defers deletion with a snackbar "Undo" option (~4 seconds) before the conversation is permanently removed. The snackbar appears inside the history sheet so it remains visible while the sheet is open, and the sheet stays open so multiple conversations can be deleted in sequence</li>
-<li>Deleting the active conversation clears the chat</li>
-<li>Heartbeat conversations are included in the history list with a "Heartbeat" label badge, and can also be accessed via the heartbeat banner</li>
+<li>A history icon in the top bar opens a bottom sheet of saved conversations</li>
+<li><strong>Single-mode chats</strong> (normal and interactive) appear directly at the root of the history sheet</li>
+<li>History lists can be sorted <strong>by time newest-first</strong> (default, latest tasks on top) or <strong>oldest-first</strong></li>
+<li>Inside a <strong>war task folder</strong> (the list under a dated task such as <code>2026-8月-31-任务9</code>), rows sort by <strong>parent model name</strong> A→Z or Z→A instead of time; the task-result row stays pinned at the top</li>
+<li>Model conversations show a <strong>parent model chip</strong> plus a <strong>child model chip</strong></li>
+<li><strong>Collaboration</strong> and <strong>War mode</strong> tasks live under their respective mode folders; tap a folder to browse tasks and model sub-conversations</li>
+<li>The legacy flat list behavior is preserved for single-mode chats; only collaboration and war workflows use the folder tree</li>
+<li>Each item shows the title; tapping loads that conversation and dismisses the sheet</li>
+<li>Delete, copy, and undo behaviors match the previous flat history sheet where applicable</li>
+<li>Heartbeat conversations are included with a "Heartbeat" label badge, and can also be accessed via the heartbeat banner</li>
 </ul>
 <h2 id="message-sending">Message Sending</h2>
 <ul>
@@ -1276,6 +1277,7 @@
 <li>The attachment button is shown whenever the active service supports file attachments (text files work with all remote models); it is hidden when the active service runs on-device, since on-device services do not support attachments</li>
 <li>Unsupported file types (e.g., <code>.zip</code>) show an error message</li>
 <li>Files exceeding the per-category size limit show a size error; size is checked by stat before the file is read, so multi-gigabyte attachments are rejected without allocating memory for the full contents</li>
+<li>A <strong>folder</strong> may be attached. In collaboration and war, the folder is described by path and a short listing; models read files with the shell instead of embedding the tree. In single-mode chat, a folder is still expanded into files, but <code>.git</code> / <code>node_modules</code> / <code>build</code> and similar directories are skipped and expansion stops after 40 files or about 400 KB of encoded payload</li>
 <li>Long filenames in chips are truncated with an ellipsis while preserving the extension</li>
 <li>File attachments persist across conversation save/restore via an <code>attachments</code> list on each message; older conversations saved with a single-file schema are migrated on load</li>
 </ul>
@@ -1302,9 +1304,13 @@
 <li><strong>Scroll to bottom</strong>: a small floating action button (down arrow) appears when the user has scrolled up past the latest messages; tapping it animates back to the bottom</li>
 <li><strong>Messages</strong>: user (right-aligned, with optional image preview), assistant (Markdown-rendered + action buttons), tool executing (spinner), loading indicator, error with retry (or free-provider suggestions panel when Free is rate-limited with no services configured). When the fallback chain answered with an alternate service rather than the user's selected one, a small "Answered by …" label is shown under the assistant message naming the service that produced the response</li>
 <li><strong>Input</strong>: text field, send/stop button, attachment button, file chip</li>
-<li><strong>Empty state</strong>: animated logo + welcome message</li>
+<li><strong>Empty state</strong>: CUI name on an empty new chat (no spinner). Letters use a 176 sp wordmark; the animated double-dot used as the <code>i</code> tittle is the same size as the standalone double-dot icon (52 dp) and sits on the stem</li>
+<li><strong>Hover tips</strong>: sit <strong>outside</strong> the button (below when space allows, otherwise above). A thin transparent bridge keeps the tip from flickering when the pointer moves onto it; the tip surface does not cover the button</li>
+<li><strong>Speech input (STT)</strong>: Windows desktop uses bundled Vosk models. A <strong>中 / EN</strong> control next to the microphone selects the recognizer; empty input defaults to Chinese. Typed CJK forces the Chinese model; a Latin-only draft can switch to English. After stop, a mismatched or replacement-character transcript is re-recognized with the other language model and replacement characters are stripped. Chinese transcripts also drop extra spaces between characters</li>
+<li><strong>Scrollbars (desktop)</strong>: lists and long panes show a drag-able scrollbar (chat, history, war result table, settings, skills, MCP, sandbox, Kai Build, model picker)</li>
 <li><strong>Drag-and-drop</strong>: supported for file attachments</li>
 <li><strong>History sheet</strong>: bottom sheet listing saved conversations with title, date, active highlight, and delete</li>
+<li><strong>Auto score</strong>: after a single-mode reply succeeds, the model receives an automatic score (word-count/time, completion, stability, quality). A user-set score is never overwritten</li>
 </ul>
 <h2 id="key-files">Key Files</h2>
 <table>
@@ -1361,7 +1367,27 @@
 </tr>
 <tr>
 <td><code>composeApp/src/commonMain/.../ui/chat/composables/QuestionInput.kt</code></td>
-<td>Text input with send/stop button</td>
+<td>Text input with send/stop button, STT language chip</td>
+</tr>
+<tr>
+<td><code>composeApp/src/commonMain/.../speech/SpeechLanguage.kt</code></td>
+<td>STT language resolve / cycle / transcript normalize</td>
+</tr>
+<tr>
+<td><code>composeApp/src/commonMain/.../ui/components/HoverTooltip.kt</code></td>
+<td>Hover popup tips without covering the button</td>
+</tr>
+<tr>
+<td><code>composeApp/src/commonMain/.../ui/components/DesktopScrollbar.kt</code></td>
+<td>Desktop drag-able scrollbars</td>
+</tr>
+<tr>
+<td><code>composeApp/src/commonMain/.../ui/components/CuiBranding.kt</code></td>
+<td>Empty-state CUI letters + animated i-dot</td>
+</tr>
+<tr>
+<td><code>composeApp/src/commonMain/.../data/TaskAutoScore.kt</code></td>
+<td>Post-task automatic scoring</td>
 </tr>
 </tbody>
 </table>

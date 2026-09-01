@@ -23,7 +23,7 @@
     
     
       
-        <title>Collaboration Mode - Kai Documentation</title>
+        <title>Collaboration mode - Kai Documentation</title>
       
     
     
@@ -110,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Collaboration Mode
+              Collaboration mode
             
           </span>
         </div>
@@ -703,10 +703,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#eligibility" class="md-nav__link">
+  <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Eligibility
+        Overview
       
     </span>
   </a>
@@ -714,10 +714,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#round-1" class="md-nav__link">
+  <a href="#starting-a-task" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Round 1
+        Starting a task
       
     </span>
   </a>
@@ -725,10 +725,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#follow-up-rounds" class="md-nav__link">
+  <a href="#chat-history-folders" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Follow-up rounds
+        Chat history folders
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#folder-attachments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Folder attachments
       
     </span>
   </a>
@@ -740,39 +751,6 @@
     <span class="md-ellipsis">
       
         Settings
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#copy-all" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Copy all
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#chat-visibility" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Chat visibility
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#release-builds" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Release builds
       
     </span>
   </a>
@@ -807,90 +785,100 @@
 
 
 
-<h1 id="collaboration-mode">Collaboration Mode</h1>
-<p><strong>Last verified:</strong> 2026-08-27</p>
-<p>Collaboration mode sends the <strong>same user instruction in parallel</strong> to every configured model whose <strong>model-test total score is strictly greater than 0</strong>. There are no task-party or supervisor roles—each model answers independently. Windows (desktop) and Android share the same implementation in <code>composeApp</code> common code.</p>
-<h2 id="eligibility">Eligibility</h2>
-<p>Only models with benchmark <strong>total score &gt; 0</strong> participate. Run <strong>模型测试</strong> in Settings first; models that fail the probe (no response) receive <strong>0</strong> and are excluded.</p>
-<h2 id="round-1">Round 1</h2>
-<p>The user question is sent identically to all eligible models in parallel.</p>
-<h2 id="follow-up-rounds">Follow-up rounds</h2>
-<p>After a round completes, if at least one model succeeded, the user can tap <strong>下一轮</strong>. Only models that <strong>successfully answered in the previous round</strong> receive the next prompt, formatted as:</p>
-<div class="highlight"><pre><span></span><code>【原始问题】
-{question}
-
-【你上一次的回答】
-{previous answer}
-
-【审阅要求】
-请审阅你上一次的回答是否存在问题。若存在问题请说明并修正你的回答；若认为没有问题请明确回复「没有问题」。
-</code></pre></div>
-<p>Users may continue for unlimited rounds while successful models remain.</p>
-<h2 id="settings">Settings</h2>
+<h1 id="collaboration-mode">Collaboration mode</h1>
+<p><strong>Last verified:</strong> 2026-08-31</p>
+<h2 id="overview">Overview</h2>
+<p>Collaboration sends one user question to every configured model whose <strong>model-test total score is at least</strong> a threshold you choose in the wizard (default <strong>50</strong>, inclusive). Each model runs in its own conversation using the same single-mode pipeline (tools, memory, plan, sandbox session). Results are stored under a three-level folder tree in chat history.</p>
+<p>For multi-round analysis and per-aspect voting, use <strong>战争模式</strong> (see <a href="../war-mode/">war-mode.md</a>).</p>
+<h2 id="starting-a-task">Starting a task</h2>
+<ol>
+<li>In the chat screen, tap <strong>协作模式</strong> (not the main send box — this opens the wizard).</li>
+<li>Enter your question → <strong>下一步</strong> (the wizard input has no send button).</li>
+<li>Set the minimum test score (models with score <strong>≥</strong> this value participate; default 50) → <strong>下一步</strong>.</li>
+<li>Configure max wait per call (default 60s). Wait means <strong>no output at all</strong> in that window; a model that is still streaming after the first byte is not cut off. Also set retry count, failure alerts, and round-end alerts → <strong>开始</strong>.</li>
+</ol>
+<h2 id="chat-history-folders">Chat history folders</h2>
 <table>
 <thead>
 <tr>
-<th>Parameter</th>
-<th>Default</th>
-<th>Purpose</th>
+<th>Level</th>
+<th>Example</th>
+<th>Contents</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Max wait (seconds)</td>
-<td>60</td>
-<td>Per-model call timeout</td>
+<td>1</td>
+<td><code>单一模式</code> / <code>协作模式</code></td>
+<td>Root folders</td>
 </tr>
 <tr>
-<td>Retry count</td>
 <td>2</td>
-<td>Retries after failure</td>
+<td><code>2026-02-20-任务1</code></td>
+<td>One collaboration task</td>
 </tr>
 <tr>
-<td>Model system prompt</td>
-<td>built-in default</td>
-<td>System prompt for all models</td>
+<td>3</td>
+<td><code>opencode-hy3</code></td>
+<td>One model’s Q&amp;A thread</td>
 </tr>
 </tbody>
 </table>
-<h2 id="copy-all">Copy all</h2>
-<p><strong>一键复制</strong> exports the user question plus every round’s model replies (multi-round content).</p>
-<h2 id="chat-visibility">Chat visibility</h2>
-<ul>
-<li>The user question appears at the top of the collaboration panel.</li>
-<li><strong>Overview</strong> shows all models; each <strong>model tab</strong> filters to that model’s events.</li>
-<li>Each round’s summary is appended to chat history as an assistant message.</li>
-</ul>
-<h2 id="release-builds">Release builds</h2>
-<p>Tagged releases (<code>v*</code>) publish Windows (<code>.zip</code> portable + <code>.msi</code>) and Android (<code>.apk</code>) to GitHub Releases via <code>.github/workflows/release.yml</code>.</p>
+<p>Level-3 rows show status color: yellow = running, green = completed, red = failed. Tap a model folder for the WeChat-style view of the <strong>full thread</strong> (every user and assistant turn), plus copy, retry, and a score slider. Each folder row has a copy button that exports formatted text for that branch.</p>
+<p>When a task <strong>starts</strong>, the chat history sheet opens automatically inside that task’s folder. When it <strong>finishes</strong>, the task is marked completed (green) and the history sheet stays on that folder so you can open model threads immediately.</p>
+<p>Each model’s finished answer writes an automatic score (word-count/time, completion, stability, quality). A score the user set by hand is never overwritten.</p>
+<h2 id="folder-attachments">Folder attachments</h2>
+<p>Attaching a folder does <strong>not</strong> inline the whole tree into every model request. Each model receives the folder’s absolute path, a short directory summary, and an instruction to read files with <code>execute_shell_command</code>. Loose files picked alongside a folder are still attached as usual. <code>.git</code>, <code>node_modules</code>, <code>build</code>, and similar directories are omitted from the summary.</p>
+<h2 id="settings">Settings</h2>
+<p>Collaboration settings only document participation rules. Run parameters are set in the wizard each time.</p>
 <h2 id="key-files">Key Files</h2>
 <table>
 <thead>
 <tr>
 <th>File</th>
-<th>Purpose</th>
+<th>Role</th>
 </tr>
 </thead>
 <tbody>
 <tr>
+<td><code>composeApp/src/commonMain/.../data/collaboration/CollaborationTaskRunner.kt</code></td>
+<td>Parallel task orchestration</td>
+</tr>
+<tr>
+<td><code>composeApp/src/commonMain/.../data/FolderAttachments.kt</code></td>
+<td>Folder path prefix; skip junk dirs</td>
+</tr>
+<tr>
 <td><code>composeApp/src/commonMain/.../data/collaboration/CollaborationModel.kt</code></td>
-<td>Config, events, follow-up and copy helpers</td>
+<td>Config and wizard params</td>
 </tr>
 <tr>
-<td><code>composeApp/src/commonMain/.../data/collaboration/CollaborationOrchestrator.kt</code></td>
-<td>Parallel broadcast and multi-round engine</td>
+<td><code>composeApp/src/commonMain/.../data/ConversationFolderManager.kt</code></td>
+<td>Folder hierarchy</td>
 </tr>
 <tr>
-<td><code>composeApp/src/commonMain/.../ui/chat/composables/CollaborationPanel.kt</code></td>
-<td>Overview, per-model views, copy, next round</td>
+<td><code>composeApp/src/commonMain/.../data/ConversationCopyFormatter.kt</code></td>
+<td>Branch copy text</td>
+</tr>
+<tr>
+<td><code>composeApp/src/commonMain/.../ui/chat/composables/CollaborationWizardSheet.kt</code></td>
+<td>Wizard UI</td>
+</tr>
+<tr>
+<td><code>composeApp/src/commonMain/.../ui/chat/composables/ChatHistoryTreeSheet.kt</code></td>
+<td>History tree</td>
+</tr>
+<tr>
+<td><code>composeApp/src/commonMain/.../ui/chat/composables/CollaborationModelChatView.kt</code></td>
+<td>Per-model WeChat UI</td>
 </tr>
 <tr>
 <td><code>composeApp/src/commonMain/.../ui/settings/CollaborationSettings.kt</code></td>
-<td>Timeout and prompt configuration</td>
+<td>Settings help text</td>
 </tr>
 <tr>
-<td><code>.github/workflows/release.yml</code></td>
-<td>Windows zip/MSI + Android APK GitHub Releases</td>
+<td><code>composeApp/src/commonMain/.../data/TaskAutoScore.kt</code></td>
+<td>Post-answer automatic scoring</td>
 </tr>
 </tbody>
 </table>

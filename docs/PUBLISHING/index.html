@@ -703,17 +703,6 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#v320-v330" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        已知失败原因（v3.2.0 / v3.3.0）
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -725,10 +714,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#release-v331" class="md-nav__link">
+  <a href="#release" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Release 产物（v3.3.1）
+        Release 产物
       
     </span>
   </a>
@@ -754,21 +743,19 @@
 
 <h1 id="github-releases">发布到 GitHub Releases</h1>
 <p>本仓库的 GitHub 地址是 <strong>https://github.com/cuixinyuan666/kai</strong>（不是上游 <code>SimonSchubert/Kai</code>）。</p>
-<p>Cursor Cloud 推送到 Origin 后，GitHub 会镜像 <code>main</code> 与 tag。<code>v*</code> tag 会触发 <code>.github/workflows/release.yml</code>。</p>
-<h2 id="v320-v330">已知失败原因（v3.2.0 / v3.3.0）</h2>
-<p>各平台安装包已成功构建，但 <strong>Rename assets</strong> 在 Windows zip 已名为 <code>Kai-&lt;version&gt;-windows.zip</code> 时执行 <code>mv</code> 到同名文件失败，因此没有创建 GitHub Release。v3.3.1 已改为幂等重命名，WinGet 失败也不再阻断 Release。</p>
+<p>打 <code>v*</code> tag 会触发 <code>.github/workflows/release.yml</code>，<strong>只编译并上传 Android APK</strong>。</p>
 <h2 id="_1">发布流程</h2>
-<div class="highlight"><pre><span></span><code><span class="c1"># 版本号写在 gradle/libs.versions.toml 的 appVersion</span>
-git<span class="w"> </span>tag<span class="w"> </span>v3.3.1
+<p>版本号写在 <code>gradle/libs.versions.toml</code> 的 <code>appVersion</code>（Android <code>versionCode</code> 同步加一）：</p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>tag<span class="w"> </span>v3.5.9
 git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>main
-git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v3.3.1
+git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v3.5.9
 </code></pre></div>
 <p>然后打开：</p>
 <ul>
 <li>Actions：https://github.com/cuixinyuan666/kai/actions</li>
 <li>Releases：https://github.com/cuixinyuan666/kai/releases</li>
 </ul>
-<h2 id="release-v331">Release 产物（v3.3.1）</h2>
+<h2 id="release">Release 产物</h2>
 <table>
 <thead>
 <tr>
@@ -779,26 +766,11 @@ git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </
 <tbody>
 <tr>
 <td>Android</td>
-<td><code>Kai-3.3.1-android.apk</code></td>
-</tr>
-<tr>
-<td>Windows</td>
-<td><code>Kai-3.3.1-windows.zip</code>（便携压缩包）</td>
-</tr>
-<tr>
-<td>Windows</td>
-<td><code>Kai-3.3.1-windows.msi</code></td>
-</tr>
-<tr>
-<td>macOS</td>
-<td><code>Kai-3.3.1-macos.dmg</code></td>
-</tr>
-<tr>
-<td>Linux</td>
-<td><code>Kai-3.3.1-linux.deb</code> / <code>.rpm</code> / <code>.AppImage</code> / <code>.flatpak</code> / <code>.tar.gz</code></td>
+<td><code>Kai-&lt;version&gt;-android.apk</code></td>
 </tr>
 </tbody>
 </table>
+<p>不构建 Windows / macOS / Linux 安装包。若仓库未配置签名密钥，APK 使用 debug 签名，可侧载安装。</p>
 
 
 

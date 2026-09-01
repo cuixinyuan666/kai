@@ -1679,7 +1679,7 @@
 
 
 <h1 id="tools">Tools</h1>
-<p><strong>Last verified:</strong> 2026-08-09</p>
+<p><strong>Last verified:</strong> 2026-08-31</p>
 <p>Kai's tools feature allows the AI to execute external functions during conversations — web search, notifications, calendar events, shell commands, memory operations, and more. Tools are defined with a schema, executed with safety guards, and managed through per-tool toggles in settings.</p>
 <h2 id="concepts">Concepts</h2>
 <h3 id="tool">Tool</h3>
@@ -1879,6 +1879,7 @@
 <h4 id="persistent-bash-session-android">Persistent bash session (Android)</h4>
 <p>On Android, each conversation gets its own persistent bash session inside the Linux sandbox. This is the default execution mode for <code>execute_shell_command</code>: <code>cd</code>, environment variable exports, shell functions, and other in-shell state carry across calls within the same conversation, so the AI can build up working context the same way a human terminal user does. Passing <code>fresh: true</code> opts out of the persistent session for a single call — that command runs in a one-shot proot invocation with no shared state, useful when the AI wants a clean environment without disturbing the ongoing session.</p>
 <p>The desktop tool dynamically includes the detected OS (macOS/Linux/Windows) and shell in its description so the AI knows the execution context.</p>
+<p>On <strong>Windows</strong>, commands run in <strong>PowerShell 7 (pwsh)</strong> that ships inside the app (<code>app/resources/pwsh/pwsh.exe</code> in the portable zip). Gradle downloads the official portable zip at package/<code>run</code> time (not stored in git). If that copy is missing, Kai uses <code>pwsh</code> from PATH, then Windows PowerShell 5.1 as a last resort. Background shell jobs use the same executable (not <code>cmd</code>).</p>
 <p>On desktop, dangerous environment variables (PATH, LD_PRELOAD, LD_LIBRARY_PATH, DYLD_INSERT_LIBRARIES, DYLD_LIBRARY_PATH, DYLD_FRAMEWORK_PATH) cannot be overridden via the <code>env</code> parameter.</p>
 <h4 id="process-management">Process management</h4>
 <p>The <code>manage_process</code> tool is automatically available when the shell command tool is enabled. It supports these actions:</p>
@@ -1923,7 +1924,7 @@
 <tbody>
 <tr>
 <td><code>execute_shell_command</code></td>
-<td>Execute a shell command on the host machine</td>
+<td>Execute a shell command on the host (Windows: bundled PowerShell 7)</td>
 <td>Disabled</td>
 </tr>
 <tr>
@@ -2084,6 +2085,14 @@
 <tr>
 <td><code>composeApp/src/jvmShared/.../tools/ProcessManagerTool.kt</code></td>
 <td>Process management tool shared by Android and desktop</td>
+</tr>
+<tr>
+<td><code>composeApp/src/desktopMain/.../tools/ShellCommandTool.kt</code></td>
+<td>Desktop host shell</td>
+</tr>
+<tr>
+<td><code>composeApp/src/desktopMain/.../tools/BundledPwsh.kt</code></td>
+<td>Resolves bundled PowerShell 7 for Windows</td>
 </tr>
 <tr>
 <td><code>composeApp/src/desktopMain/.../tools/ProcessManager.kt</code></td>
