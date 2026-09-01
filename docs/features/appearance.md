@@ -2,7 +2,7 @@
 
 **Last verified:** 2026-09-01
 
-Kai has a four-way theme picker — **System**, **Light**, **Dark**, and **OLED** — exposed in Settings on every platform. The default is System, which follows the operating system's dark/light preference. The other three force a specific theme regardless of system state. Dark uses a soft dark background (`#121212`) with slightly lighter surfaces (`#1E1E1E`); OLED flattens the background and the lowest surface tier to pure black (`#000000`) for users who want to save power on OLED panels.
+Kai has a five-way theme picker — **System**, **Light**, **Dark**, **OLED**, and **Eye Care** — exposed in Settings on every platform. The default is System, which follows the operating system's dark/light preference. The other modes force a specific theme regardless of system state. Dark uses a soft dark background (`#121212`) with slightly lighter surfaces (`#1E1E1E`); OLED flattens the background and the lowest surface tier to pure black (`#000000`) for users who want to save power on OLED panels. Eye Care uses a warm light palette.
 
 Cards, dialogs, bottom sheets, and menus stay visually lifted in either dark variant because only the lowest surface tiers are affected; container tiers keep their default Material 3 elevation.
 
@@ -10,6 +10,7 @@ Cards, dialogs, bottom sheets, and menus stay visually lifted in either dark var
 
 - **System**: `isSystemInDarkTheme()` decides between the light and dark schemes.
 - **Light**: forces the Material 3 light scheme.
+- **Eye Care**: forces a warm light scheme. On Android the status and navigation bars stay in the light style.
 - **Dark**: forces the Material 3 dark scheme. `background` renders `#121212` and `surface` renders `#1E1E1E`. `surfaceContainer*` tiers use their default Material 3 dark values so elevated components remain visible. `onBackground` / `onSurface` stay white.
 - **OLED**: forces dark + pure-black override. `background`, `surface`, and `surfaceContainerLowest` render pure black. The elevated `surfaceContainer*` tiers are unchanged so cards and menus stay visible against black.
 - **Material You (Android 12+)**: wallpaper-derived accent colors (`primary`, `secondary`, `tertiary`) always apply. When OLED is selected, the black override is layered on top of the dynamic dark scheme so accents and buttons continue to track the wallpaper.

@@ -49,7 +49,7 @@ class MainActivity : ComponentActivity() {
             val systemInDark = isSystemInDarkTheme()
             val isDarkTheme = when (themeMode) {
                 ThemeMode.System -> systemInDark
-                ThemeMode.Light -> false
+                ThemeMode.Light, ThemeMode.EyeCare -> false
                 ThemeMode.Dark, ThemeMode.OledBlack -> true
             }
             LaunchedEffect(isDarkTheme) {
