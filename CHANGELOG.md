@@ -1,3 +1,13 @@
+## v3.5.9 — 2026-09-01
+
+### Features
+- War mode: skipped proposers appear in the vote table; automatic scoring after each answer round
+- Chat history: sort model folders inside a war task by parent name
+- Larger empty-chat CUI; hover tooltips no longer cover action buttons
+
+### Changes
+- GitHub Releases publish **Android APK only** (`Kai-3.5.9-android.apk`)
+
 ## v3.5.8 — 2026-08-30
 
 ### Fixes

@@ -1,4 +1,4 @@
-name: Build and Release
+name: Build Android APK
 
 on:
   push:
@@ -7,17 +7,17 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to build (e.g. v3.4.0)'
+        description: 'Release tag to build (e.g. v3.5.9)'
         required: true
-        default: 'v3.4.0'
+        default: 'v3.5.9'
 
 permissions:
   contents: write
 
 jobs:
-  windows-zip:
-    name: Generate Windows Zip
-    runs-on: windows-latest
+  apk:
+    name: Generate APK
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,24 +29,45 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - name: Build application distribution
-        run: ./gradlew createReleaseDistributable --stacktrace
-      - name: Create zip archive
-        shell: pwsh
+      - name: Set execution flag for gradlew
+        run: chmod +x gradlew
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android SDK packages
         run: |
-          $version = "${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}".TrimStart('v')
-          $source = "composeApp/build/compose/binaries/main-release/app/Kai"
-          $dest = "Kai-${version}-windows.zip"
-          Compress-Archive -Path "$source/*" -DestinationPath $dest -Force
-      - name: Upload Windows Zip Artifact
+          sdkmanager "platforms;android-37"
+          sdkmanager "build-tools;36.0.0"
+          sdkmanager "ndk;29.0.14206865"
+      - name: Build APK
+        run: bash ./gradlew :androidApp:assembleFossRelease --stacktrace
+      - name: Sign APK
+        id: sign_apk
+        continue-on-error: true
+        uses: r0adkll/sign-android-release@v1
+        with:
+          releaseDirectory: androidApp/build/outputs/apk/foss/release
+          signingKeyBase64: ${{ secrets.KEYSTORE_B64 }}
+          alias: ${{ secrets.KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEYSTORE_PASSWORD }}
+      - name: Use Gradle APK when signing unavailable
+        run: |
+          set -euo pipefail
+          RELEASE_DIR="androidApp/build/outputs/apk/foss/release"
+          SIGNED="$RELEASE_DIR/androidApp-foss-release-signed.apk"
+          if [ ! -f "$SIGNED" ]; then
+            cp "$RELEASE_DIR/androidApp-foss-release.apk" "$SIGNED"
+          fi
+          ls -la "$RELEASE_DIR"
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-zip-package
-          path: Kai-*-windows.zip
+          name: signed-apk
+          path: androidApp/build/outputs/apk/foss/release/androidApp-foss-release-signed.apk
 
   release:
-    name: Release Windows Zip
-    needs: [windows-zip]
+    name: Release Android APK
+    needs: [apk]
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -57,40 +78,35 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
 
-      - name: Download Windows Zip Artifact
+      - name: Download APK Artifact
         uses: actions/download-artifact@v4.1.7
         with:
-          name: windows-zip-package
+          name: signed-apk
 
-      - name: List downloaded files (for debugging)
-        run: ls -la
-
-      - name: Rename assets
+      - name: Rename APK
         run: |
           set -euo pipefail
           VERSION="${RELEASE_TAG#v}"
           shopt -s nullglob
-          move_to() {
-            local dest="$1"
-            shift
-            if [ -e "$dest" ]; then
-              echo "Already present: $dest"
-              return 0
-            fi
-            local src
-            for src in "$@"; do
-              if [ -f "$src" ]; then
-                mv "$src" "$dest"
-                echo "Moved $src -> $dest"
-                return 0
+          if [ -f "Kai-${VERSION}-android.apk" ]; then
+            echo "Already present: Kai-${VERSION}-android.apk"
+          else
+            src=""
+            for candidate in androidApp-foss-release-signed.apk *.apk; do
+              if [ -f "$candidate" ]; then
+                src="$candidate"
+                break
               fi
             done
-            echo "ERROR: no source for $dest (tried: $*)"
-            ls -la
-            return 1
-          }
-          move_to "Kai-${VERSION}-windows.zip" *-windows.zip
-          ls -la Kai-*
+            if [ -z "$src" ]; then
+              echo "ERROR: no APK artifact found"
+              ls -la
+              exit 1
+            fi
+            mv "$src" "Kai-${VERSION}-android.apk"
+            echo "Moved $src -> Kai-${VERSION}-android.apk"
+          fi
+          ls -la Kai-*-android.apk
 
       - name: Extract changelog
         run: |
@@ -114,7 +130,7 @@ jobs:
           name: Kai ${{ env.RELEASE_TAG }}
           body_path: changelog.txt
           files: |
-            Kai-*-windows.zip
+            Kai-*-android.apk
           draft: false
           prerelease: false
           generate_release_notes: true
