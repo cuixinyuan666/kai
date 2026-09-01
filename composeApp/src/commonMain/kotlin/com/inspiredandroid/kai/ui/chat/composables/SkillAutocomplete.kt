@@ -3,7 +3,9 @@ package com.inspiredandroid.kai.ui.chat.composables
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -14,11 +16,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.inspiredandroid.kai.skills.SkillManifest
+import com.inspiredandroid.kai.ui.components.VerticalScrollbarForScroll
 import com.inspiredandroid.kai.ui.handCursor
 import kotlinx.collections.immutable.ImmutableList
 
@@ -45,7 +49,7 @@ internal fun SkillAutocomplete(
     if (filtered.isEmpty()) return
 
     val scrollState = rememberScrollState()
-    Column(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
@@ -56,15 +60,25 @@ internal fun SkillAutocomplete(
                 color = MaterialTheme.colorScheme.outlineVariant,
                 shape = RoundedCornerShape(16.dp),
             )
-            .heightIn(max = 200.dp)
-            .verticalScroll(scrollState),
+            .heightIn(max = 200.dp),
     ) {
-        for (skill in filtered) {
-            SkillRow(
-                skill = skill,
-                onClick = { onSelect(skill) },
-            )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(scrollState)
+                .padding(end = 12.dp),
+        ) {
+            for (skill in filtered) {
+                SkillRow(
+                    skill = skill,
+                    onClick = { onSelect(skill) },
+                )
+            }
         }
+        VerticalScrollbarForScroll(
+            scrollState = scrollState,
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+        )
     }
 }
 

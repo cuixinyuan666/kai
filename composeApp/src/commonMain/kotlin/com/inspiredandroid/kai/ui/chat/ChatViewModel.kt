@@ -2,20 +2,29 @@ package com.inspiredandroid.kai.ui.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.inspiredandroid.kai.data.CollaborationModelStatus
 import com.inspiredandroid.kai.data.Conversation
+import com.inspiredandroid.kai.data.metadata
+import com.inspiredandroid.kai.data.ConversationCopyFormatter
+import com.inspiredandroid.kai.data.ConversationFolderManager
 import com.inspiredandroid.kai.data.DataRepository
 import com.inspiredandroid.kai.data.FreeMode
 import com.inspiredandroid.kai.data.Service
-import com.inspiredandroid.kai.data.ServiceEntry
 import com.inspiredandroid.kai.data.TaskScheduler
 import com.inspiredandroid.kai.data.UiSubmission
 import com.inspiredandroid.kai.data.collaboration.CollaborationEvent
 import com.inspiredandroid.kai.data.collaboration.CollaborationListener
-import com.inspiredandroid.kai.data.collaboration.CollaborationOrchestrator
-import com.inspiredandroid.kai.data.collaboration.CollaborationRoundSnapshot
-import com.inspiredandroid.kai.data.collaboration.ChatMode
+import com.inspiredandroid.kai.data.collaboration.CollaborationTaskRunner
+import com.inspiredandroid.kai.data.collaboration.CollaborationSupport
+import com.inspiredandroid.kai.data.ModelBenchmark
+import com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams
 import com.inspiredandroid.kai.data.collaboration.ModelRef
-import com.inspiredandroid.kai.data.collaboration.ModelScore
+import com.inspiredandroid.kai.data.collaboration.ChatMode
+import com.inspiredandroid.kai.data.war.WarEvent
+import com.inspiredandroid.kai.data.war.WarListener
+import com.inspiredandroid.kai.data.war.WarTaskRunner
+import com.inspiredandroid.kai.data.war.WarWizardParams
+import com.inspiredandroid.kai.data.war.decodeWarTaskResult
 import com.inspiredandroid.kai.getBackgroundDispatcher
 import com.inspiredandroid.kai.network.UiError
 import com.inspiredandroid.kai.network.shouldShowFreeProviderSuggestions
@@ -86,36 +95,67 @@ class ChatViewModel(
         goBackInteractiveMode = ::goBackInteractiveMode,
         sendSmsDraft = ::sendSmsDraft,
         discardSmsDraft = ::discardSmsDraft,
-        toggleChatMode = ::toggleChatMode,
-        startCollaboration = ::startCollaboration,
-        continueCollaborationRound = ::continueCollaborationRound,
+        openCollaborationWizard = ::openCollaborationWizard,
+        dismissCollaborationWizard = ::dismissCollaborationWizard,
+        startCollaborationTask = ::startCollaborationTask,
         stopCollaboration = ::stopCollaboration,
         clearCollaborationNotification = ::clearCollaborationNotification,
+        openCollaborationModelView = ::openCollaborationModelView,
+        closeCollaborationModelView = ::closeCollaborationModelView,
+        openHistoryFolder = ::openHistoryFolder,
+        openHistoryTreeAtRoot = ::openHistoryTreeAtRoot,
+        closeHistoryFolder = ::closeHistoryFolder,
+        closeHistoryTreeSheet = ::closeHistoryTreeSheet,
+        copyConversationBranch = ::copyConversationBranch,
+        clearPendingCopyText = ::clearPendingCopyText,
+        retryCollaborationModel = ::retryCollaborationModel,
+        retryCollaborationTask = ::retryCollaborationTask,
+        setCollaborationModelScore = ::setCollaborationModelScore,
+        navigateCollaborationModel = ::navigateCollaborationModel,
+        openWarWizard = ::openWarWizard,
+        dismissWarWizard = ::dismissWarWizard,
+        startWarTask = ::startWarTask,
+        stopWar = ::stopWar,
+        clearWarNotification = ::clearWarNotification,
+        openWarResultView = ::openWarResultView,
+        closeWarResultView = ::closeWarResultView,
+        openWarTaskModels = ::openWarTaskModels,
+        copyPlainText = ::copyPlainText,
+        optimizePrompt = ::optimizePrompt,
+        clearPendingPromptText = ::clearPendingPromptText,
         resendUserMessage = ::resendUserMessage,
+        openWarModelMessage = ::openWarModelMessage,
     )
-    private val freeModeNames: Map<FreeMode, String> = FreeMode.entries.associateWith { "Free ${it.modelId.replaceFirstChar { c -> c.uppercase() }}" }
+    /** Loaded asynchronously — [getString] is suspend and must not run inside [combine]. */
+    private val untitledConversationTitle = MutableStateFlow("")
     private var currentJob: Job? = null
     private var pendingConversationDeleteJob: Job? = null
-    private var collaborationOrchestrator: CollaborationOrchestrator? = null
-    private var collaborationSuccessfulAnswers: Map<ModelRef, String> = emptyMap()
+    private var collaborationTaskRunner: CollaborationTaskRunner? = null
+    private var warTaskRunner: WarTaskRunner? = null
     private val _state = MutableStateFlow(
         ChatUiState(
             actions = actions,
             showPrivacyInfo = dataRepository.isUsingSharedKey(),
             chatMode = dataRepository.getChatMode(),
+            collaborationConfig = dataRepository.getCollaborationConfig(),
         ),
     )
 
     init {
         updateAvailableServices()
 
-        // Keep restoreCurrentConversation off the main thread; see issue #197 (large persisted
+        viewModelScope.launch {
+            untitledConversationTitle.value = runCatching {
+                getString(Res.string.conversation_untitled)
+            }.getOrDefault("")
+        }
+
+        // Keep conversation load off the main thread; see issue #197 (large persisted
         // tool outputs caused ANRs when JSON-decoded synchronously during VM construction).
-        // ChatScreen gates the interactive-mode branch on !isRestoring to avoid a flash.
+        // Startup shows the empty CUI screen — do not restore the last chat into the main pane.
         viewModelScope.launch(backgroundDispatcher) {
             dataRepository.loadConversations()
-            dataRepository.restoreCurrentConversation()
-            presetInteractiveModeForCurrentConversation()
+            dataRepository.startNewChat()
             _state.update { it.copy(isRestoring = false) }
         }
 
@@ -173,32 +213,63 @@ class ChatViewModel(
         }
     }
 
+    private data class ConversationListSnapshot(
+        val state: ChatUiState,
+        val history: List<History>,
+        val conversations: List<Conversation>,
+        val conversationId: String?,
+        val hasUnreadHeartbeat: Boolean,
+    )
+
     val state = combine(
-        _state,
-        dataRepository.chatHistory,
-        dataRepository.savedConversations,
-        dataRepository.currentConversationId,
-        dataRepository.hasUnreadHeartbeat,
-    ) { state, history, conversations, conversationId, hasUnreadHeartbeat ->
-        val summaries = conversations
+        combine(
+            _state,
+            dataRepository.chatHistory,
+            dataRepository.savedConversations,
+            dataRepository.currentConversationId,
+            dataRepository.hasUnreadHeartbeat,
+        ) { state, history, conversations, conversationId, hasUnreadHeartbeat ->
+            ConversationListSnapshot(state, history, conversations, conversationId, hasUnreadHeartbeat)
+        },
+        untitledConversationTitle,
+    ) { snapshot, untitledTitle ->
+        val summaries = snapshot.conversations
+            .filter {
+                it.type != Conversation.TYPE_HEARTBEAT &&
+                    it.type != Conversation.TYPE_FOLDER &&
+                    it.type != Conversation.TYPE_COLLABORATION_TASK &&
+                    it.type != Conversation.TYPE_COLLABORATION_MODEL &&
+                    it.type != Conversation.TYPE_WAR_TASK &&
+                    it.type != Conversation.TYPE_WAR_MODEL &&
+                    it.type != Conversation.TYPE_WAR_RESULT
+            }
             .sortedByDescending { it.updatedAt }
             .map {
                 val isHeartbeat = it.type == Conversation.TYPE_HEARTBEAT
                 val isInteractive = it.type == Conversation.TYPE_INTERACTIVE
+                val meta = it.metadata()
                 ConversationSummary(
                     id = it.id,
-                    title = if (isHeartbeat) "" else it.title.ifEmpty { getString(Res.string.conversation_untitled) },
+                    title = if (isHeartbeat) "" else it.title.ifEmpty { untitledTitle },
                     updatedAt = it.updatedAt,
                     isHeartbeat = isHeartbeat,
                     isInteractive = isInteractive,
+                    type = it.type,
+                    parentId = it.parentId,
+                    collaborationStatus = meta.status?.let { name ->
+                        runCatching { CollaborationModelStatus.valueOf(name) }.getOrNull()
+                    },
+                    userScore = meta.userScore,
+                    collaborationQuestion = meta.collaborationQuestion,
                 )
             }
-        state.copy(
-            history = history.toImmutableList(),
+        snapshot.state.copy(
+            history = snapshot.history.toImmutableList(),
             supportedFileExtensions = dataRepository.supportedFileExtensions().toImmutableList(),
             savedConversations = summaries.toImmutableList(),
-            currentConversationId = conversationId,
-            hasUnreadHeartbeat = hasUnreadHeartbeat,
+            folderConversations = snapshot.conversations.toImmutableList(),
+            currentConversationId = snapshot.conversationId,
+            hasUnreadHeartbeat = snapshot.hasUnreadHeartbeat,
             installedSkills = dataRepository.getInstalledSkills().toImmutableList(),
         )
     }.distinctUntilChanged().stateIn(
@@ -422,6 +493,11 @@ class ChatViewModel(
             updateAvailableServices()
             return
         }
+        if (instanceId == "free") {
+            dataRepository.setFreeServicePrimary(true)
+            updateAvailableServices()
+            return
+        }
 
         dataRepository.setFreeServicePrimary(false)
         val instances = dataRepository.getConfiguredServiceInstances()
@@ -438,6 +514,17 @@ class ChatViewModel(
      * 总类 (service) exposes all of its 分支 (models) for direct selection.
      */
     private fun selectModel(instanceId: String, modelId: String) {
+        val freeModeFromId = FREE_MODE_INSTANCE_IDS[instanceId]
+        if (instanceId == "free" || freeModeFromId != null) {
+            val mode = freeModeFromId
+                ?: FreeMode.entries.find { it.modelId == modelId }
+                ?: return
+            dataRepository.setFreeMode(mode)
+            dataRepository.setFreeServicePrimary(true)
+            updateAvailableServices()
+            return
+        }
+
         val instances = dataRepository.getConfiguredServiceInstances()
         val instance = instances.firstOrNull { it.instanceId == instanceId } ?: return
         val service = Service.fromId(instance.serviceId)
@@ -451,65 +538,38 @@ class ChatViewModel(
     }
 
     // region 协作模式
-    private fun toggleChatMode() {
-        val next = if (_state.value.chatMode == ChatMode.SINGLE) ChatMode.COLLABORATION else ChatMode.SINGLE
-        dataRepository.setChatMode(next)
-        _state.update { it.copy(chatMode = next) }
+    private fun openCollaborationWizard() {
+        _state.update { it.copy(showCollaborationWizard = true) }
     }
 
-    private fun startCollaboration(question: String) {
-        if (question.isBlank()) return
-        collaborationSuccessfulAnswers = emptyMap()
+    private fun dismissCollaborationWizard() {
+        _state.update { it.copy(showCollaborationWizard = false) }
+    }
+
+    private fun startCollaborationTask(params: CollaborationWizardParams) {
+        if (params.question.isBlank()) return
         stopCollaboration()
-        viewModelScope.launch(backgroundDispatcher) {
-            dataRepository.appendUserMessageToCurrentChat(question)
-        }
         _state.update {
             it.copy(
+                showCollaborationWizard = false,
                 isCollaborating = true,
                 collaborationEvents = emptyList(),
                 collaborationSummary = null,
                 collaborationNotification = null,
-                collaborationQuestion = question,
-                collaborationRound = 0,
-                collaborationRounds = emptyList(),
-                canContinueCollaboration = false,
             )
         }
-        runCollaborationRound(roundNumber = 1, question = question)
-    }
-
-    private fun continueCollaborationRound() {
-        val state = _state.value
-        if (state.isCollaborating || !state.canContinueCollaboration) return
-        val question = state.collaborationQuestion ?: return
-        if (collaborationSuccessfulAnswers.isEmpty()) return
-        val nextRound = state.collaborationRound + 1
-        _state.update {
-            it.copy(
-                isCollaborating = true,
-                collaborationSummary = null,
-                canContinueCollaboration = false,
-            )
-        }
-        runCollaborationRound(
-            roundNumber = nextRound,
-            question = question,
-            targetModels = collaborationSuccessfulAnswers.keys.toList(),
-            previousAnswers = collaborationSuccessfulAnswers,
-        )
-    }
-
-    private fun runCollaborationRound(
-        roundNumber: Int,
-        question: String,
-        targetModels: List<ModelRef> = emptyList(),
-        previousAnswers: Map<ModelRef, String> = emptyMap(),
-    ) {
-        val config = dataRepository.getCollaborationConfig()
-        val orchestrator = CollaborationOrchestrator(
+        val runner = CollaborationTaskRunner(
             repository = dataRepository,
             listener = object : CollaborationListener {
+                override fun onTaskStarted(taskId: String) {
+                    _state.update { s ->
+                        s.copy(
+                            historyTreeParentId = taskId,
+                            showHistoryTree = true,
+                        )
+                    }
+                }
+
                 override fun onEvent(event: CollaborationEvent) {
                     _state.update { s -> s.copy(collaborationEvents = s.collaborationEvents + event) }
                 }
@@ -518,81 +578,382 @@ class ChatViewModel(
                     _state.update { s -> s.copy(collaborationNotification = "$title：$body") }
                 }
 
-                override fun onScores(scores: List<ModelScore>) {
-                    val current = dataRepository.getCollaborationConfig()
-                    val merged = (
-                        current.scores.filter { cs ->
-                            scores.none { it.instanceId == cs.instanceId && it.modelId == cs.modelId }
-                        } + scores
-                    )
-                    dataRepository.setCollaborationConfig(current.copy(scores = merged))
+                override fun onModelStatusChanged(conversationId: String, status: CollaborationModelStatus) {
+                    // State refreshes via savedConversations flow
                 }
 
-                override fun onRoundFinished(round: Int, snapshot: CollaborationRoundSnapshot, canContinue: Boolean) {
-                    collaborationSuccessfulAnswers = snapshot.responses
-                        .filter { !it.failed && !it.response.isNullOrBlank() }
-                        .associate { it.ref to it.response!! }
+                override fun onTaskFinished(taskId: String, summary: String) {
                     _state.update { s ->
                         s.copy(
-                            collaborationRound = round,
-                            collaborationRounds = s.collaborationRounds + snapshot,
-                            canContinueCollaboration = canContinue,
+                            isCollaborating = false,
+                            collaborationSummary = summary,
+                            historyTreeParentId = taskId.ifBlank { s.historyTreeParentId },
+                            showHistoryTree = true,
                         )
-                    }
-                }
-
-                override fun onFinished(summary: String, allSucceeded: Boolean) {
-                    _state.update { s -> s.copy(isCollaborating = false, collaborationSummary = summary) }
-                    viewModelScope.launch(backgroundDispatcher) {
-                        dataRepository.appendAssistantMessageToCurrentChat(summary)
                     }
                 }
             },
         )
-        collaborationOrchestrator = orchestrator
-        viewModelScope.launch {
-            orchestrator.runRound(
-                originalQuestion = question,
-                config = config,
-                roundNumber = roundNumber,
-                targetModels = targetModels,
-                previousAnswers = previousAnswers,
-            )
+        collaborationTaskRunner = runner
+        viewModelScope.launch(backgroundDispatcher) {
+            try {
+                runner.runTask(params)
+            } catch (e: Exception) {
+                _state.update { s ->
+                    s.copy(collaborationNotification = "协作任务失败：${e.message ?: "未知错误"}")
+                }
+            } finally {
+                _state.update { s ->
+                    if (s.isCollaborating) s.copy(isCollaborating = false) else s
+                }
+            }
         }
     }
 
     private fun stopCollaboration() {
-        collaborationOrchestrator?.cancel()
-        collaborationOrchestrator = null
+        collaborationTaskRunner?.cancel()
+        collaborationTaskRunner = null
         _state.update { it.copy(isCollaborating = false) }
     }
 
     private fun clearCollaborationNotification() {
         _state.update { it.copy(collaborationNotification = null) }
     }
+
+    private fun openCollaborationModelView(conversationId: String) {
+        _state.update {
+            it.copy(
+                collaborationModelViewId = conversationId,
+                showHistoryTree = false,
+                collaborationHighlightMessageId = null,
+            )
+        }
+    }
+
+    private fun openWarModelMessage(conversationId: String, messageId: String) {
+        _state.update {
+            it.copy(
+                collaborationModelViewId = conversationId,
+                collaborationHighlightMessageId = messageId.ifBlank { null },
+                showHistoryTree = false,
+            )
+        }
+    }
+
+    private fun closeCollaborationModelView() {
+        val warTaskId = _state.value.warResultViewTaskId
+        if (warTaskId != null) {
+            _state.update {
+                it.copy(
+                    collaborationModelViewId = null,
+                    collaborationHighlightMessageId = null,
+                )
+            }
+            return
+        }
+        val modelId = _state.value.collaborationModelViewId
+        val taskParentId = dataRepository.savedConversations.value
+            .find { it.id == modelId }
+            ?.parentId
+        _state.update {
+            it.copy(
+                collaborationModelViewId = null,
+                collaborationHighlightMessageId = null,
+                historyTreeParentId = taskParentId ?: it.historyTreeParentId,
+                showHistoryTree = taskParentId != null,
+            )
+        }
+    }
+
+    private fun openHistoryFolder(folderId: String) {
+        _state.update { it.copy(historyTreeParentId = folderId, showHistoryTree = true) }
+    }
+
+    private fun openHistoryTreeAtRoot() {
+        _state.update { it.copy(historyTreeParentId = null, showHistoryTree = true) }
+    }
+
+    private fun closeHistoryFolder() {
+        val parentId = _state.value.historyTreeParentId ?: return
+        val conversations = ConversationFolderManager.ensureHierarchy(dataRepository.savedConversations.value)
+        val newParent = when (parentId) {
+            Conversation.FOLDER_SINGLE_MODE_ID,
+            Conversation.FOLDER_COLLABORATION_MODE_ID,
+            Conversation.FOLDER_WAR_MODE_ID,
+            -> null
+            else -> conversations.find { it.id == parentId }?.parentId
+        }
+        _state.update { it.copy(historyTreeParentId = newParent) }
+    }
+
+    fun dismissHistoryTree() {
+        _state.update { it.copy(showHistoryTree = false, historyTreeParentId = null) }
+    }
+
+    private fun closeHistoryTreeSheet() {
+        dismissHistoryTree()
+    }
+
+    private fun copyConversationBranch(conversationId: String, level: Int) {
+        val conversations = dataRepository.savedConversations.value
+        val text = when (level) {
+            1 -> ConversationCopyFormatter.copyLevel1(conversations, conversationId)
+            2 -> conversations.find { it.id == conversationId }?.let {
+                ConversationCopyFormatter.copyLevel2(conversations, it)
+            } ?: ""
+            3 -> conversations.find { it.id == conversationId }?.let {
+                ConversationCopyFormatter.copyLevel3(it)
+            } ?: ""
+            else -> ""
+        }
+        if (text.isNotBlank()) {
+            _state.update { it.copy(pendingCopyText = text) }
+        }
+    }
+
+    private fun clearPendingCopyText() {
+        _state.update { it.copy(pendingCopyText = null) }
+    }
+
+    private fun retryCollaborationModel(conversationId: String) {
+        val conversation = dataRepository.savedConversations.value.find { it.id == conversationId }
+        val timeoutSec = conversation?.metadata()?.maxWaitSeconds ?: 60
+        val timeout = timeoutSec.toLong() * 1000L
+        viewModelScope.launch(backgroundDispatcher) {
+            _state.update { it.copy(isCollaborating = true) }
+            try {
+                dataRepository.retryCollaborationModel(conversationId, timeout)
+            } finally {
+                _state.update { it.copy(isCollaborating = false) }
+            }
+        }
+    }
+
+    private fun setCollaborationModelScore(conversationId: String, score: Double) {
+        dataRepository.setCollaborationModelUserScore(conversationId, score)
+    }
+
+    private fun retryCollaborationTask(taskId: String) {
+        val task = dataRepository.savedConversations.value.find { it.id == taskId } ?: return
+        val meta = task.metadata()
+        val question = meta.collaborationQuestion ?: return
+        val params = CollaborationWizardParams(
+            question = question,
+            minScoreThreshold = meta.minScoreThreshold ?: 0.0,
+            maxWaitSeconds = meta.maxWaitSeconds ?: dataRepository.getCollaborationConfig().maxWaitSeconds,
+            retryCount = meta.retryCount ?: dataRepository.getCollaborationConfig().retryCount,
+            notifyOnFailure = meta.notifyOnFailure ?: true,
+            notifyOnComplete = meta.notifyOnComplete ?: true,
+        )
+        startCollaborationTask(params)
+    }
+
+    private fun navigateCollaborationModel(delta: Int) {
+        val currentId = _state.value.collaborationModelViewId ?: return
+        val conversations = dataRepository.savedConversations.value
+        val current = conversations.find { it.id == currentId } ?: return
+        val siblings = ConversationFolderManager.childrenOf(current.parentId ?: return, conversations)
+            .filter {
+                it.type == Conversation.TYPE_COLLABORATION_MODEL ||
+                    it.type == Conversation.TYPE_WAR_MODEL
+            }
+            .sortedBy { it.title.lowercase() }
+        val index = siblings.indexOfFirst { it.id == currentId }
+        if (index < 0) return
+        val nextIndex = index + delta
+        if (nextIndex in siblings.indices) {
+            _state.update { it.copy(collaborationModelViewId = siblings[nextIndex].id) }
+        }
+    }
+
+    private fun optimizePrompt(currentText: String) {
+        if (currentText.isBlank()) return
+        viewModelScope.launch(backgroundDispatcher) {
+            _state.update { it.copy(isOptimizingPrompt = true) }
+            val folderHint = dataRepository.savedConversations.value
+                .flatMap { it.messages }
+                .mapNotNull { msg ->
+                    val match = Regex("""(/[\w/\\.-]+)""").find(msg.content)
+                    match?.groupValues?.getOrNull(1)
+                }
+                .lastOrNull()
+            val scoreMap = dataRepository.getModelBenchmarks().associate { it.modelKey to it.totalScore }
+            val targets = buildList {
+                for (entry in dataRepository.getServiceEntries()) {
+                    val modelIds = entry.modelOptions.map { it.id }.ifEmpty { listOfNotNull(entry.modelId) }
+                    for (modelId in modelIds.distinct()) {
+                        val key = "${entry.serviceId}::$modelId"
+                        add(Triple(entry.instanceId, modelId, scoreMap[key] ?: 0.0))
+                    }
+                }
+            }.sortedByDescending { it.third }
+
+            val system = buildString {
+                append("你是提示词优化助手。请根据用户原始提示词，输出更精准、更适合当前工程上下文的版本。")
+                if (folderHint != null) append(" 工作目录或文件夹上下文：$folderHint")
+                append(" 只输出优化后的提示词正文，不要解释。")
+            }
+            var optimized = currentText
+            for ((instanceId, modelId, _) in targets) {
+                try {
+                    val result = dataRepository.askWithInstanceModel(
+                        instanceId = instanceId,
+                        modelId = modelId,
+                        prompt = currentText,
+                        systemPrompt = system,
+                        timeoutMs = 45_000L,
+                    )
+                    if (result.isNotBlank()) {
+                        optimized = result.trim()
+                        break
+                    }
+                } catch (_: Exception) {
+                    continue
+                }
+            }
+            _state.update { it.copy(isOptimizingPrompt = false, pendingPromptText = optimized) }
+        }
+    }
+
+    private fun clearPendingPromptText() {
+        _state.update { it.copy(pendingPromptText = null) }
+    }
+
+    private fun copyPlainText(text: String) {
+        if (text.isNotBlank()) {
+            _state.update { it.copy(pendingCopyText = text) }
+        }
+    }
+
+    // region 战争模式
+    private fun openWarWizard() {
+        _state.update { it.copy(showWarWizard = true) }
+    }
+
+    private fun dismissWarWizard() {
+        _state.update { it.copy(showWarWizard = false) }
+    }
+
+    private fun startWarTask(params: WarWizardParams) {
+        if (params.question.isBlank()) return
+        stopWar()
+        stopCollaboration()
+        _state.update {
+            it.copy(
+                showWarWizard = false,
+                isWarRunning = true,
+                warEvents = emptyList(),
+                warSummary = null,
+                warNotification = null,
+            )
+        }
+        val runner = WarTaskRunner(
+            repository = dataRepository,
+            listener = object : WarListener {
+                override fun onTaskStarted(taskId: String) {
+                    _state.update { s ->
+                        s.copy(
+                            warResultViewTaskId = taskId,
+                            historyTreeParentId = taskId,
+                            showHistoryTree = true,
+                        )
+                    }
+                }
+
+                override fun onEvent(event: WarEvent) {
+                    _state.update { s -> s.copy(warEvents = s.warEvents + event) }
+                }
+
+                override fun onNotify(title: String, body: String) {
+                    _state.update { s -> s.copy(warNotification = "$title：$body") }
+                }
+
+                override fun onModelStatusChanged(conversationId: String, status: CollaborationModelStatus) {
+                    // State refreshes via savedConversations flow
+                }
+
+                override fun onTaskFinished(taskId: String, summary: String) {
+                    _state.update { s ->
+                        s.copy(
+                            isWarRunning = false,
+                            warSummary = summary,
+                            warResultViewTaskId = taskId.ifBlank { s.warResultViewTaskId },
+                            historyTreeParentId = taskId.ifBlank { s.historyTreeParentId },
+                            showHistoryTree = true,
+                        )
+                    }
+                }
+            },
+        )
+        warTaskRunner = runner
+        viewModelScope.launch(backgroundDispatcher) {
+            try {
+                runner.runTask(params)
+            } catch (e: Exception) {
+                _state.update { s ->
+                    s.copy(warNotification = "战争模式失败：${e.message ?: "未知错误"}")
+                }
+            } finally {
+                _state.update { s ->
+                    if (s.isWarRunning) s.copy(isWarRunning = false) else s
+                }
+            }
+        }
+    }
+
+    private fun stopWar() {
+        warTaskRunner?.cancel()
+        warTaskRunner = null
+        _state.update { it.copy(isWarRunning = false) }
+    }
+
+    private fun clearWarNotification() {
+        _state.update { it.copy(warNotification = null) }
+    }
+
+    private fun openWarResultView(taskId: String) {
+        _state.update { it.copy(warResultViewTaskId = taskId, showHistoryTree = false) }
+    }
+
+    private fun closeWarResultView() {
+        val taskId = _state.value.warResultViewTaskId
+        _state.update {
+            it.copy(
+                warResultViewTaskId = null,
+                historyTreeParentId = taskId ?: it.historyTreeParentId,
+                showHistoryTree = taskId != null,
+            )
+        }
+    }
+
+    private fun openWarTaskModels(taskId: String) {
+        _state.update {
+            it.copy(
+                warResultViewTaskId = null,
+                historyTreeParentId = taskId,
+                showHistoryTree = true,
+            )
+        }
+    }
+
+    fun buildEligibleModelOptions(minScore: Double = com.inspiredandroid.kai.data.collaboration.CollaborationSupport.DEFAULT_MIN_SCORE_THRESHOLD): List<Pair<ModelRef, String>> {
+        val eligible = CollaborationSupport.resolveEligibleModels(dataRepository, minScore)
+        val services = runCatching { dataRepository.getServiceEntries() }.getOrDefault(emptyList())
+        val labelResolver = CollaborationSupport.buildLabelResolver(services)
+        return eligible.map { ref ->
+            ref to (labelResolver[ref.key] ?: ref.modelId)
+        }
+    }
+
+    fun warResultForTask(taskId: String): com.inspiredandroid.kai.data.war.WarTaskResult? {
+        val task = dataRepository.savedConversations.value.find { it.id == taskId } ?: return null
+        val json = task.metadata().warResultJson ?: return null
+        return decodeWarTaskResult(json)
+    }
     // endregion
 
     private fun updateAvailableServices() {
-        val configuredEntries = dataRepository.getServiceEntries()
-        val currentFreeMode = dataRepository.getFreeMode()
-        val freeIsPrimary = dataRepository.isFreeServicePrimary() || configuredEntries.isEmpty()
-
-        val freeModes = (listOf(currentFreeMode) + FreeMode.entries.filter { it != currentFreeMode }).map { mode ->
-            ServiceEntry(
-                instanceId = mode.instanceId,
-                serviceId = Service.Free.id,
-                serviceName = freeModeNames.getValue(mode),
-                modelId = "",
-                icon = mode.icon,
-            )
-        }
-
-        val entries = if (freeIsPrimary) {
-            freeModes + configuredEntries
-        } else {
-            configuredEntries + freeModes
-        }.toImmutableList()
-
+        val entries = dataRepository.getServiceEntries().toImmutableList()
         val primaryService = entries.firstOrNull()?.let { Service.fromId(it.serviceId) }
         val warning = if (primaryService?.isOnDevice == true && dataRepository.getLocalDownloadedModels().isEmpty()) {
             Res.string.litert_no_model_warning
@@ -612,6 +973,8 @@ class ChatViewModel(
     }
 
     private fun loadConversation(id: String) {
+        stopCollaboration()
+        stopWar()
         currentJob?.cancel()
         currentJob = null
         val conversation = dataRepository.savedConversations.value.find { it.id == id }
@@ -624,6 +987,9 @@ class ChatViewModel(
                 showFreeProviderSuggestions = false,
                 isInteractiveMode = isInteractive,
                 isLoading = false,
+                collaborationModelViewId = null,
+                warResultViewTaskId = null,
+                showHistoryTree = false,
             )
         }
     }
@@ -682,8 +1048,9 @@ class ChatViewModel(
     }
 
     private fun startNewChat() {
-        // 终止可能正在运行的协作，确保左上角"+"能开启新一轮对话（单一或协作均可）。
+        // 终止可能正在运行的协作/战争任务，确保左上角"+"能开启新一轮对话。
         stopCollaboration()
+        stopWar()
         currentJob?.cancel()
         currentJob = null
         dataRepository.startNewChat()
@@ -698,7 +1065,15 @@ class ChatViewModel(
                 collaborationSummary = null,
                 isCollaborating = false,
                 collaborationNotification = null,
-                collaborationQuestion = null,
+                showCollaborationWizard = false,
+                collaborationModelViewId = null,
+                collaborationHighlightMessageId = null,
+                showWarWizard = false,
+                isWarRunning = false,
+                warEvents = emptyList(),
+                warSummary = null,
+                warNotification = null,
+                warResultViewTaskId = null,
             )
         }
     }

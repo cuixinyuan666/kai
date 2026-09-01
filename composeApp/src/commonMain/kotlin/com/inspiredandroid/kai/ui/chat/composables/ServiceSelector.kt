@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -35,7 +36,6 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -45,8 +45,12 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.inspiredandroid.kai.data.benchmarkScoreColor
+import com.inspiredandroid.kai.data.Service
 import com.inspiredandroid.kai.data.ServiceEntry
 import com.inspiredandroid.kai.data.ServiceModelOption
+import com.inspiredandroid.kai.ui.components.ModelPairChips
+import com.inspiredandroid.kai.ui.components.ServiceMetaBadges
+import com.inspiredandroid.kai.ui.components.VerticalScrollbarForScroll
 import com.inspiredandroid.kai.ui.handCursor
 import kai.composeapp.generated.resources.Res
 import kai.composeapp.generated.resources.ic_arrow_drop_down
@@ -115,12 +119,18 @@ internal fun ServiceSelector(
                         tonalElevation = 3.dp,
                         shadowElevation = 8.dp,
                     ) {
-                        Column(
+                        val menuScroll = rememberScrollState()
+                        Box(
                             modifier = Modifier
                                 .widthIn(min = 240.dp)
-                                .heightIn(max = maxMenuHeight)
-                                .verticalScroll(rememberScrollState())
-                                .padding(vertical = 4.dp),
+                                .heightIn(max = maxMenuHeight),
+                        ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(menuScroll)
+                                .padding(vertical = 4.dp)
+                                .padding(end = 12.dp),
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
@@ -155,9 +165,12 @@ internal fun ServiceSelector(
                                 if (entry.instanceId in expandedIds && hasBranches) {
                                     entry.modelOptions.sortedBy { it.label }.forEach { option ->
                                     ModelBranchItem(
+                                        parentName = entry.serviceName,
                                         option = option,
                                         isSelected = entry.modelId == option.id,
-                                        showCrown = (entry.serviceId == "opencode" || entry.serviceId == "opencode-terminal") && option.id.endsWith("-free"),
+                                        showCrown = (entry.serviceId == "opencode" || entry.serviceId == "opencode-terminal") &&
+                                            (option.id.endsWith("-free") || option.isFreeTier),
+                                        showFreeBadge = option.isFreeTier,
                                         score = modelBenchmarks["${entry.serviceId}::${option.id}"],
                                         onClick = {
                                                 expanded = false
@@ -167,6 +180,11 @@ internal fun ServiceSelector(
                                     }
                                 }
                             }
+                        }
+                        VerticalScrollbarForScroll(
+                            scrollState = menuScroll,
+                            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                        )
                         }
                     }
                 }
@@ -192,11 +210,6 @@ private fun ServiceHeaderItem(
     } else {
         MaterialTheme.colorScheme.onSurface
     }
-    val subTextColor = if (isCurrent) {
-        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -216,18 +229,14 @@ private fun ServiceHeaderItem(
         )
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = entry.serviceName,
-                style = MaterialTheme.typography.bodyMedium,
-                color = textColor,
+            val currentLabel = entry.modelOptions.find { it.id == entry.modelId }?.label
+                ?: entry.modelId.takeIf { it.isNotEmpty() }
+            ModelPairChips(
+                parent = entry.serviceName,
+                child = currentLabel,
+                compact = true,
             )
-            if (entry.modelId.isNotEmpty()) {
-                Text(
-                    text = entry.modelId,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = subTextColor,
-                )
-            }
+            ServiceMetaBadges(Service.fromId(entry.serviceId))
         }
         if (entry.serviceId == "opencode" || entry.serviceId == "opencode-terminal") {
             Icon(
@@ -253,17 +262,14 @@ private fun ServiceHeaderItem(
 
 @Composable
 private fun ModelBranchItem(
+    parentName: String,
     option: ServiceModelOption,
     isSelected: Boolean,
     showCrown: Boolean = false,
+    showFreeBadge: Boolean = false,
     score: Double? = null,
     onClick: () -> Unit,
 ) {
-    val textColor = if (isSelected) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -287,12 +293,10 @@ private fun ModelBranchItem(
                 ),
         )
         Spacer(Modifier.width(12.dp))
-        Text(
-            text = option.label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = textColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        ModelPairChips(
+            parent = parentName,
+            child = option.label,
+            compact = true,
             modifier = Modifier.weight(1f),
         )
         if (score != null) {
@@ -303,6 +307,20 @@ private fun ModelBranchItem(
                 fontWeight = FontWeight.Bold,
                 color = Color(benchmarkScoreColor(score)),
             )
+        }
+        if (showFreeBadge) {
+            Spacer(Modifier.width(6.dp))
+            Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = Color(0xFF1B5E20),
+            ) {
+                Text(
+                    text = "Free",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
         }
         if (showCrown) {
             Spacer(Modifier.width(4.dp))

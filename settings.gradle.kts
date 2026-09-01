@@ -29,5 +29,7 @@ dependencyResolutionManagement {
 }
 
 include(":composeApp")
-include(":androidApp")
-include(":screenshotTests")
+if (!startParameter.projectProperties.containsKey("desktopOnly")) {
+    include(":androidApp")
+    include(":screenshotTests")
+}

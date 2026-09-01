@@ -27,6 +27,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.DisableSelection
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SuggestionChip
@@ -61,6 +64,7 @@ import com.inspiredandroid.kai.data.ServiceEntry
 import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.imageExtensions
 import com.inspiredandroid.kai.skills.SkillManifest
+import com.inspiredandroid.kai.speech.SpeechLanguage
 import com.inspiredandroid.kai.ui.components.HoverTooltip
 import com.inspiredandroid.kai.ui.gradientBrush
 import com.inspiredandroid.kai.ui.handCursor
@@ -103,31 +107,20 @@ fun QuestionInput(
     onSelectModel: (String, String) -> Unit = { _, _ -> },
     modelBenchmarks: Map<String, Double> = emptyMap(),
     chatMode: ChatMode = ChatMode.SINGLE,
-    onToggleChatMode: () -> Unit = {},
-    onStartCollaboration: (String) -> Unit = {},
+    onOpenCollaborationWizard: () -> Unit = {},
+    onOptimizePrompt: () -> Unit = {},
+    isOptimizingPrompt: Boolean = false,
+    speechSupported: Boolean = false,
+    isSpeechListening: Boolean = false,
+    onToggleSpeechInput: () -> Unit = {},
+    sttLanguage: String = "zh",
+    onCycleSttLanguage: () -> Unit = {},
     installedSkills: ImmutableList<SkillManifest> = persistentListOf(),
+    showSendButton: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
-        // 协作模式切换
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            SuggestionChip(
-                modifier = Modifier.handCursor(),
-                onClick = { if (chatMode != ChatMode.SINGLE) onToggleChatMode() },
-                label = { Text("单一模式") },
-            )
-            SuggestionChip(
-                modifier = Modifier.handCursor(),
-                onClick = { if (chatMode != ChatMode.COLLABORATION) onToggleChatMode() },
-                label = { Text("协作模式") },
-            )
-        }
-        // Slash autocomplete: shown when the user is typing the first token and it starts
+        // Slash autocomplete
         // with `/`. Selecting an entry rewrites the first token to the canonical skill id
         // so the ViewModel can match it at send time.
         if (installedSkills.isNotEmpty()) {
@@ -199,11 +192,7 @@ fun QuestionInput(
         fun submitQuestion() {
             val text = textState.text
             if (text.isNotBlank()) {
-                if (chatMode == ChatMode.COLLABORATION) {
-                    onStartCollaboration(text.trim())
-                } else {
-                    ask(text.trim())
-                }
+                ask(text.trim())
                 onTextStateChange(TextFieldValue(""))
             }
         }
@@ -257,7 +246,7 @@ fun QuestionInput(
                                 ),
                             )
                             return@onPreviewKeyEvent true
-                        } else {
+                        } else if (showSendButton && chatMode == ChatMode.SINGLE) {
                             // Enter without Shift -> send message and consume event
                             submitQuestion()
                             return@onPreviewKeyEvent true
@@ -278,6 +267,29 @@ fun QuestionInput(
                     modifier = Modifier.padding(end = 7.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
+                    if (speechSupported) {
+                        HoverTooltip("识别语言（中/EN）") {
+                            Text(
+                                text = SpeechLanguage.label(sttLanguage),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .clickable(onClick = onCycleSttLanguage)
+                                    .handCursor()
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                            )
+                        }
+                        CircleIconButton(
+                            icon = Icons.Default.Mic,
+                            onClick = onToggleSpeechInput,
+                            tint = if (isSpeechListening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+                        )
+                    }
+                    CircleIconButton(
+                        icon = Icons.Default.AutoFixHigh,
+                        onClick = onOptimizePrompt,
+                        tint = if (isOptimizingPrompt) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+                    )
                     if (availableServices.size > 1) {
                         ServiceSelector(
                             services = availableServices,
@@ -288,12 +300,12 @@ fun QuestionInput(
                     }
                     if (isLoading) {
                         TrailingIcon(icon = Res.drawable.ic_stop, onClick = cancel, isPulsing = true, tooltip = "停止生成")
-                    } else if (textState.text.isNotBlank()) {
+                    } else if (showSendButton && chatMode == ChatMode.SINGLE && textState.text.isNotBlank()) {
                         TrailingIcon(icon = Res.drawable.ic_up, onClick = { submitQuestion() }, tooltip = "发送")
                     }
                 }
             },
-            keyboardActions = if (currentPlatform !is Platform.Mobile) {
+            keyboardActions = if (currentPlatform !is Platform.Mobile && showSendButton && chatMode == ChatMode.SINGLE) {
                 KeyboardActions(onSend = { submitQuestion() })
             } else {
                 KeyboardActions() // No keyboard send action on mobile
@@ -319,7 +331,11 @@ fun QuestionInput(
                 }
             },
             keyboardOptions = KeyboardOptions(
-                imeAction = if (currentPlatform is Platform.Mobile) ImeAction.Default else ImeAction.Send,
+                imeAction = if (currentPlatform is Platform.Mobile || !showSendButton || chatMode != ChatMode.SINGLE) {
+                    ImeAction.Default
+                } else {
+                    ImeAction.Send
+                },
             ),
         )
         val inInspection = LocalInspectionMode.current
@@ -411,7 +427,7 @@ internal fun TrailingIcon(
         ) {
             Icon(
                 vectorResource(icon),
-                modifier = Modifier.size(32.dp).then(pulseModifier),
+                modifier = Modifier.size(24.dp).then(pulseModifier),
                 contentDescription = null,
                 tint = Color.White,
             )

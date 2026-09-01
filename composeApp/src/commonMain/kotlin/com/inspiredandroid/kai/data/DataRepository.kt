@@ -9,6 +9,8 @@ import com.inspiredandroid.kai.inference.ModelImportResult
 import com.inspiredandroid.kai.linux.LinuxDistro
 import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.collaboration.CollaborationConfig
+import com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams
+import com.inspiredandroid.kai.data.collaboration.ModelRef
 import com.inspiredandroid.kai.mcp.McpServerConfig
 import com.inspiredandroid.kai.network.tools.ToolInfo
 import com.inspiredandroid.kai.skills.RegistrySkillEntry
@@ -28,6 +30,7 @@ interface DataRepository {
     fun addConfiguredService(serviceId: String): ServiceInstance
     fun removeConfiguredService(instanceId: String)
     fun reorderConfiguredServices(orderedInstanceIds: List<String>)
+    fun getServiceDisplayOrder(): List<String>
     fun getServiceEntries(): List<ServiceEntry>
     fun isFreeFallbackEnabled(): Boolean
     fun setFreeFallbackEnabled(enabled: Boolean)
@@ -118,6 +121,8 @@ interface DataRepository {
     // Theme mode
     fun getThemeMode(): ThemeMode
     fun setThemeMode(mode: ThemeMode)
+    fun getSettingsTab(): String?
+    fun setSettingsTab(tab: String)
 
     // Interactive mode
     fun setInteractiveMode(enabled: Boolean)
@@ -224,6 +229,57 @@ interface DataRepository {
         systemPrompt: String? = null,
         timeoutMs: Long = 0L,
     ): String
+
+    /**
+     * 在指定会话中以单一模式完整流水线（工具、记忆等）发起一次问答，不污染当前聊天界面历史。
+     */
+    suspend fun askInConversation(
+        conversationId: String,
+        instanceId: String,
+        modelId: String,
+        question: String,
+        timeoutMs: Long = 0L,
+        files: List<io.github.vinceglb.filekit.PlatformFile> = emptyList(),
+    ): String
+
+    suspend fun retryCollaborationModel(conversationId: String, timeoutMs: Long): String
+
+    fun setCollaborationModelUserScore(conversationId: String, score: Double)
+
+    suspend fun createCollaborationTask(question: String, params: CollaborationWizardParams): String
+
+    suspend fun createCollaborationModelConversation(
+        taskId: String,
+        ref: ModelRef,
+        folderTitle: String,
+        question: String,
+        params: CollaborationWizardParams,
+    ): String
+
+    fun updateCollaborationModelStatus(conversationId: String, status: CollaborationModelStatus, response: String?)
+
+    fun completeTaskConversation(taskId: String, status: CollaborationModelStatus)
+
+    suspend fun createWarTask(
+        question: String,
+        params: com.inspiredandroid.kai.data.war.WarWizardParams,
+        summaryRef: ModelRef,
+    ): String
+
+    suspend fun createWarModelConversation(
+        taskId: String,
+        ref: ModelRef,
+        folderTitle: String,
+        question: String,
+        params: com.inspiredandroid.kai.data.war.WarWizardParams,
+        isSummaryModel: Boolean = false,
+    ): String
+
+    suspend fun createWarResultConversation(taskId: String): String
+
+    fun saveWarTaskResult(taskId: String, result: com.inspiredandroid.kai.data.war.WarTaskResult)
+
+    fun appendConversationExchange(conversationId: String, userContent: String, assistantContent: String)
 
     // 协作模式配置 / 聊天模式
     fun getChatMode(): ChatMode

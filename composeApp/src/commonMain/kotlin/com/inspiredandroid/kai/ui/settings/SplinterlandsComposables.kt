@@ -89,7 +89,7 @@ internal fun SplinterlandsSection(
     Column(modifier = Modifier.fillMaxWidth()) {
         ToggleableHeadline(
             title = "Splinterlands",
-            description = "Splinterlands is a blockchain-based trading card game. This experimental feature auto-battles Wild Ranked matches using an LLM to pick teams. Battle outcome heavily depends on the chosen model and its response speed (must respond within 180 seconds). Falls back to a simple greedy picker if the LLM fails.",
+            description = "Splinterlands 是一款区块链卡牌对战游戏。此实验性功能使用大模型在狂野排位赛中自动选队对战。对战结果高度依赖所选模型及其响应速度（须在 180 秒内回复）；若大模型失败则回退为简单贪心选队。",
             checked = isEnabled,
             onCheckedChange = onToggle,
         )

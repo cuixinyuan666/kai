@@ -45,6 +45,7 @@ import com.inspiredandroid.kai.data.SmsSyncState
 import com.inspiredandroid.kai.ui.KaiOutlinedTextField
 import com.inspiredandroid.kai.ui.components.KaiRangeSlider
 import com.inspiredandroid.kai.ui.components.KaiSlider
+import com.inspiredandroid.kai.ui.components.ModelPairChips
 import com.inspiredandroid.kai.ui.components.RefreshIconButton
 import com.inspiredandroid.kai.ui.components.SettingsListItem
 import com.inspiredandroid.kai.ui.handCursor
@@ -231,10 +232,12 @@ internal fun HeartbeatSection(
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = "${selectedEntry.serviceName} · ${selectedEntry.modelId}",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                            val child = selectedEntry.modelOptions.find { it.id == selectedEntry.modelId }?.label
+                                ?: selectedEntry.modelId
+                            ModelPairChips(
+                                parent = selectedEntry.serviceName,
+                                child = child.takeIf { it.isNotBlank() },
+                                compact = true,
                             )
                         } else {
                             Text(stringResource(Res.string.settings_heartbeat_model_default))
@@ -293,26 +296,12 @@ internal fun HeartbeatSection(
                                     )
                                 },
                                 text = {
-                                    Column {
-                                        Text(
-                                            text = entry.serviceName,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = if (isSelected) {
-                                                MaterialTheme.colorScheme.onPrimaryContainer
-                                            } else {
-                                                MaterialTheme.colorScheme.onSurface
-                                            },
-                                        )
-                                        Text(
-                                            text = entry.modelId,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = if (isSelected) {
-                                                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                                            } else {
-                                                MaterialTheme.colorScheme.onSurfaceVariant
-                                            },
-                                        )
-                                    }
+                                    ModelPairChips(
+                                        parent = entry.serviceName,
+                                        child = entry.modelOptions.find { it.id == entry.modelId }?.label
+                                            ?: entry.modelId.takeIf { it.isNotBlank() },
+                                        compact = true,
+                                    )
                                 },
                                 onClick = {
                                     modelExpanded = false

@@ -44,6 +44,8 @@ import kai.composeapp.generated.resources.ic_service_reka
 import kai.composeapp.generated.resources.ic_service_requesty
 import kai.composeapp.generated.resources.ic_service_routeway
 import kai.composeapp.generated.resources.ic_service_sealion
+import kai.composeapp.generated.resources.ic_service_sensenova
+import kai.composeapp.generated.resources.ic_service_siliconflow
 import kai.composeapp.generated.resources.ic_service_together
 import kai.composeapp.generated.resources.ic_service_venice
 import kai.composeapp.generated.resources.ic_service_xai
@@ -116,14 +118,23 @@ sealed class Service(
     val supportsImages: Boolean = true,
     val reasoningRequestMode: ReasoningRequestMode = ReasoningRequestMode.NONE,
     val customHeaders: Map<String, String> = emptyMap(),
+    /** Non-null when this provider was added from the FreeLLMAPI catalog. */
+    val sourceLabel: String? = null,
 ) {
+    /** True when the provider can be used without pasting an API key. */
+    val noNeedKey: Boolean get() = !requiresApiKey && !isOnDevice
+
     data object Free : Service(
         id = "free",
-        displayName = "Free",
+        displayName = "APP-FREE",
         icon = Res.drawable.ic_service_free_fast,
         requiresApiKey = false,
-        defaultModel = null,
+        defaultModel = "fast",
         settingsKeyPrefix = "",
+        defaultModels = listOf(
+            ModelDefinition(id = "fast", subtitle = "Fast"),
+            ModelDefinition(id = "expert", subtitle = "Expert"),
+        ),
         chatUrl = "https://api.kai9000.com/chat/completions",
         modelsUrl = null,
         // The kai9000 proxy fans out to a Mistral → Groq → OpenRouter chain. The Groq
@@ -462,7 +473,7 @@ sealed class Service(
 
     data object OpenCode : Service(
         id = "opencode",
-        displayName = "opencode api",
+        displayName = "OpenCode API",
         icon = Res.drawable.ic_service_opencode,
         requiresApiKey = true,
         defaultModel = null,
@@ -476,12 +487,12 @@ sealed class Service(
 
     /**
      * OpenCode 终端（opencode-terminal）：与 [OpenCode] 共享同一 Zen API 网关，
-     * 但作为独立服务呈现，以便在模型选择器中与 "opencode api" 区分。
+     * 但作为独立服务呈现，以便在模型选择器中与 "OpenCode API" 区分。
      * 支持 thinking / plan / build 调节（见 OpenAICompatibleChatRequestDto 扩展参数）。
      */
     data object OpenCodeTerminal : Service(
         id = "opencode-terminal",
-        displayName = "opencode terminal",
+        displayName = "OpenCode 终端",
         icon = Res.drawable.ic_service_opencode,
         requiresApiKey = true,
         defaultModel = null,
@@ -990,6 +1001,50 @@ sealed class Service(
         supportsImages = true,
     )
 
+    data object SiliconFlow : Service(
+        id = "siliconflow",
+        displayName = "SiliconFlow",
+        icon = Res.drawable.ic_service_siliconflow,
+        requiresApiKey = true,
+        defaultModel = "deepseek-ai/DeepSeek-V3",
+        settingsKeyPrefix = "siliconflow",
+        chatUrl = "https://api.siliconflow.cn/v1/chat/completions",
+        modelsUrl = "https://api.siliconflow.cn/v1/models",
+        defaultModels = listOf(
+            ModelDefinition(id = "deepseek-ai/DeepSeek-V3", subtitle = "DeepSeek V3"),
+            ModelDefinition(id = "deepseek-ai/DeepSeek-R1", subtitle = "DeepSeek R1"),
+            ModelDefinition(id = "Qwen/Qwen3-32B", subtitle = "Qwen3 32B"),
+            ModelDefinition(id = "Qwen/Qwen2.5-72B-Instruct", subtitle = "Qwen2.5 72B Instruct"),
+            ModelDefinition(id = "Qwen/Qwen2.5-Coder-32B-Instruct", subtitle = "Qwen2.5 Coder 32B"),
+            ModelDefinition(id = "THUDM/GLM-4-9B-0414", subtitle = "GLM-4 9B"),
+            ModelDefinition(id = "moonshotai/Kimi-K2-Instruct", subtitle = "Kimi K2 Instruct"),
+        ),
+        apiKeyUrl = "https://cloud.siliconflow.cn/account/ak",
+        apiKeyUrlDisplay = "cloud.siliconflow.cn/account/ak",
+        supportsImages = true,
+        sourceLabel = "FreeLLMAPI",
+    )
+
+    data object SenseNova : Service(
+        id = "sensenova",
+        displayName = "SenseNova",
+        icon = Res.drawable.ic_service_sensenova,
+        requiresApiKey = true,
+        defaultModel = "SenseChat-5",
+        settingsKeyPrefix = "sensenova",
+        chatUrl = "https://api.sensenova.cn/compatible-mode/v1/chat/completions",
+        modelsUrl = "https://api.sensenova.cn/compatible-mode/v1/models",
+        defaultModels = listOf(
+            ModelDefinition(id = "SenseChat-5", subtitle = "SenseChat 5"),
+            ModelDefinition(id = "SenseChat-Turbo", subtitle = "SenseChat Turbo"),
+            ModelDefinition(id = "SenseChat-Character", subtitle = "SenseChat Character"),
+            ModelDefinition(id = "SenseNova-V6-5", subtitle = "SenseNova V6.5"),
+        ),
+        apiKeyUrl = "https://platform.sensenova.cn/console/keys",
+        apiKeyUrlDisplay = "platform.sensenova.cn/console/keys",
+        supportsImages = true,
+    )
+
     data object Zhipu : Service(
         id = "zhipu",
         displayName = "Zhipu AI",
@@ -1073,7 +1128,7 @@ sealed class Service(
     )
 
     companion object {
-        val all: List<Service> get() = listOf(Free, AtlasCloud, Gemini, Anthropic, OpenAI, DeepSeek, Mistral, XAI, OpenRouter, Groq, Nvidia, Cerebras, OllamaCloud, LongCat, Together, HuggingFace, Venice, Moonshot, Zai, ZaiCodingPlan, Minimax, AiHubMix, DeepInfra, FireworksAI, OpenCode, OpenCodeTerminal, PublicAI, AIHorde, Perplexity, OpenAICompatible, Agnes, AINative, Aion, BazaarLink, Cloudflare, Cohere, GitHubModels, Kilo, LLM7, NaraRouter, NavyAI, OVH, Pollinations, Reka, Requesty, Routeway, SeaLion, Zhipu, LiteRT)
+        val all: List<Service> get() = listOf(Free, AtlasCloud, Gemini, Anthropic, OpenAI, DeepSeek, Mistral, XAI, OpenRouter, Groq, Nvidia, Cerebras, OllamaCloud, LongCat, Together, HuggingFace, Venice, Moonshot, Zai, ZaiCodingPlan, Minimax, AiHubMix, DeepInfra, FireworksAI, OpenCode, OpenCodeTerminal, PublicAI, AIHorde, Perplexity, OpenAICompatible, Agnes, AINative, Aion, BazaarLink, Cloudflare, Cohere, GitHubModels, Kilo, LLM7, NaraRouter, NavyAI, OVH, Pollinations, Reka, Requesty, Routeway, SeaLion, SiliconFlow, SenseNova, Zhipu, LiteRT)
 
         const val DEFAULT_OPENAI_COMPATIBLE_BASE_URL = "http://localhost:11434/v1"
 

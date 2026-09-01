@@ -5,6 +5,7 @@ package com.inspiredandroid.kai.data
 import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_CONFIGURED_SERVICES
 import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_CURRENT_SERVICE_ID
 import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_FREE_FALLBACK_ENABLED
+import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_SERVICE_DISPLAY_ORDER
 import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_TOOL_PREFIX
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -32,6 +33,11 @@ fun AppSettings.exportToJson(
         }
         map["current_service_id"] = JsonPrimitive(settings.getString(KEY_CURRENT_SERVICE_ID, Service.Free.id))
         map["free_fallback_enabled"] = JsonPrimitive(isFreeFallbackEnabled())
+        map["free_service_primary"] = JsonPrimitive(isFreeServicePrimary())
+        val displayOrderJson = settings.getString(KEY_SERVICE_DISPLAY_ORDER, "")
+        if (displayOrderJson.isNotBlank()) {
+            map["service_display_order"] = Json.parseToJsonElement(displayOrderJson)
+        }
 
         val instances = getConfiguredServiceInstances()
         if (instances.isNotEmpty()) {
@@ -185,6 +191,8 @@ fun AppSettings.importFromJson(
             settings.putString(KEY_CONFIGURED_SERVICES, json["configured_services"]?.toString() ?: "")
             settings.putString(KEY_CURRENT_SERVICE_ID, json["current_service_id"]?.jsonPrimitive?.content ?: Service.Free.id)
             settings.putBoolean(KEY_FREE_FALLBACK_ENABLED, json["free_fallback_enabled"]?.jsonPrimitive?.content?.toBoolean() ?: true)
+            json["free_service_primary"]?.jsonPrimitive?.content?.toBoolean()?.let { setFreeServicePrimary(it) }
+            json["service_display_order"]?.let { settings.putString(KEY_SERVICE_DISPLAY_ORDER, it.toString()) }
         } catch (_: Exception) {
             errors++
         }

@@ -7,6 +7,11 @@ import com.inspiredandroid.kai.compressImageBytes
 import com.inspiredandroid.kai.currentPlatform
 import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.collaboration.CollaborationConfig
+import com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams
+import com.inspiredandroid.kai.data.collaboration.ModelRef
+import com.inspiredandroid.kai.data.war.WarPhase
+import com.inspiredandroid.kai.data.war.WarTaskResult
+import com.inspiredandroid.kai.data.war.encodeJson
 import com.inspiredandroid.kai.data.providers.buildAnthropicMessages
 import com.inspiredandroid.kai.data.providers.buildOpenAIMessages
 import com.inspiredandroid.kai.email.EmailPoller
@@ -70,6 +75,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -227,7 +233,9 @@ class RemoteDataRepository(
         val current = appSettings.getConfiguredServiceInstances().toMutableList()
         current.add(instance)
         appSettings.setConfiguredServiceInstances(current)
-        appSettings.setFreeServicePrimary(false)
+        val order = appSettings.getServiceDisplayOrder().toMutableList()
+        if (instance.instanceId !in order) order.add(instance.instanceId)
+        appSettings.setServiceDisplayOrder(order)
         return instance
     }
 
@@ -235,36 +243,90 @@ class RemoteDataRepository(
         val current = appSettings.getConfiguredServiceInstances().toMutableList()
         current.removeAll { it.instanceId == instanceId }
         appSettings.setConfiguredServiceInstances(current)
+        appSettings.setServiceDisplayOrder(appSettings.getServiceDisplayOrder().filter { it != instanceId })
         appSettings.removeInstanceSettings(instanceId)
         modelsByInstance.remove(instanceId)
     }
 
     override fun reorderConfiguredServices(orderedInstanceIds: List<String>) {
+        val distinctIds = orderedInstanceIds.distinct()
         val current = appSettings.getConfiguredServiceInstances()
         val byId = current.associateBy { it.instanceId }
-        val reordered = orderedInstanceIds.mapNotNull { byId[it] }
-        appSettings.setConfiguredServiceInstances(reordered)
+        val reordered = distinctIds.filter { it != "free" }.mapNotNull { byId[it] }
+        val missing = current.filter { inst -> reordered.none { it.instanceId == inst.instanceId } }
+        appSettings.setConfiguredServiceInstances(reordered + missing)
+        if ("free" in distinctIds) {
+            appSettings.setServiceDisplayOrder(distinctIds)
+        } else {
+            val apiOrder = (reordered + missing).map { it.instanceId }
+            val prev = appSettings.getServiceDisplayOrder()
+            val freeIndex = prev.indexOf("free")
+            val display = if (freeIndex < 0) {
+                apiOrder + "free"
+            } else {
+                apiOrder.toMutableList().apply { add(freeIndex.coerceIn(0, size), "free") }
+            }
+            appSettings.setServiceDisplayOrder(display, updatePrimary = false)
+        }
     }
 
-    override fun getServiceEntries(): List<ServiceEntry> = getConfiguredServiceInstances().map { instance ->
-        val service = Service.fromId(instance.serviceId)
-        val modelId = appSettings.getInstanceEffectiveModelId(instance.instanceId).ifEmpty {
-            appSettings.getSelectedModelId(service)
+    override fun getServiceDisplayOrder(): List<String> = appSettings.getServiceDisplayOrder()
+
+    override fun getServiceEntries(): List<ServiceEntry> {
+        val freeMode = appSettings.getFreeMode()
+        val freeOptions = FreeMode.entries.map { mode ->
+            ServiceModelOption(
+                id = mode.modelId,
+                label = mode.modelId.replaceFirstChar { it.uppercase() },
+                isFreeTier = true,
+            )
         }
-        // Surface every model branch the user can pick for this 总类 so the chat
-        // dropdown can render them as a multi-level list (e.g. opencode-hy3,
-        // opencode-deepseek v4) instead of just the active one.
-        val options = getInstanceModels(instance.instanceId, service).value.map { m ->
-            ServiceModelOption(m.id, m.displayName ?: m.id)
-        }
-        ServiceEntry(
-            instanceId = instance.instanceId,
-            serviceId = service.id,
-            serviceName = service.displayName,
-            modelId = modelId,
-            icon = service.icon,
-            modelOptions = options,
+        val freeEntry = ServiceEntry(
+            instanceId = "free",
+            serviceId = Service.Free.id,
+            serviceName = Service.Free.displayName,
+            modelId = freeMode.modelId,
+            icon = Service.Free.icon,
+            modelOptions = freeOptions,
         )
+        val configured = getConfiguredServiceInstances().map { instance ->
+            val service = Service.fromId(instance.serviceId)
+            val modelId = appSettings.getInstanceEffectiveModelId(instance.instanceId).ifEmpty {
+                appSettings.getSelectedModelId(service)
+            }
+            val options = getInstanceModels(instance.instanceId, service).value.map { m ->
+                ServiceModelOption(
+                    id = m.id,
+                    label = m.displayName ?: m.id,
+                    isFreeTier = m.isFreeTier || FreeTierModels.isFreeTier(service, m.id),
+                )
+            }
+            ServiceEntry(
+                instanceId = instance.instanceId,
+                serviceId = service.id,
+                serviceName = service.displayName,
+                modelId = modelId,
+                icon = service.icon,
+                modelOptions = options,
+            )
+        }
+        return (listOf(freeEntry) + configured).inDisplayOrder { it.instanceId }
+    }
+
+    private fun <T> List<T>.inDisplayOrder(idOf: (T) -> String): List<T> {
+        val order = appSettings.getServiceDisplayOrder()
+        val byId = associateBy(idOf)
+        val seen = mutableSetOf<String>()
+        val out = ArrayList<T>(size)
+        for (id in order) {
+            val item = byId[id] ?: continue
+            if (seen.add(id)) out.add(item)
+        }
+        for (item in this) {
+            val id = idOf(item)
+            if (seen.add(id)) out.add(item)
+        }
+        return out
     }
 
     override fun isFreeFallbackEnabled(): Boolean = appSettings.isFreeFallbackEnabled()
@@ -396,8 +458,6 @@ class RemoteDataRepository(
                 mapAnthropicModels(requests.getAnthropicModels(creds).getOrThrow().data, selectedModelId)
             }
 
-            Service.Free -> { /* No model listing */ }
-
             Service.LiteRT -> {
                 val engine = localInferenceEngine ?: return
                 val selectedModelId = appSettings.getInstanceModelId(instanceId)
@@ -429,6 +489,7 @@ class RemoteDataRepository(
                             subtitle = it.subtitle,
                             descriptionRes = it.descriptionRes,
                             isSelected = it.id == selectedModelId,
+                            isFreeTier = FreeTierModels.isFreeTier(service, it.id),
                         )
                     }
                     updateModelsForInstance(instanceId, models, service)
@@ -674,6 +735,8 @@ class RemoteDataRepository(
         systemPrompt: String?,
         instanceId: String,
         history: MutableStateFlow<List<History>> = chatHistory,
+        modelIdOverride: String? = null,
+        requestTimeoutMs: Long? = null,
     ): AssistantTurn {
         if (service.isOnDevice) {
             // No retry: local-inference failures are deterministic, and this path mutates
@@ -685,11 +748,13 @@ class RemoteDataRepository(
             return AssistantTurn(askWithLocalEngine(messages, localPrompt, instanceId, history))
         }
 
-        val creds = instanceCredentials(instanceId, service)
+        val creds = instanceCredentials(instanceId, service).let { base ->
+            if (modelIdOverride != null) base.copy(modelId = modelIdOverride) else base
+        }
         val tools = if (supportsTools(creds.modelId)) getAvailableTools() else emptyList()
 
         if (tools.isEmpty()) {
-            return plainChat(service, creds, messages, systemPrompt, strictEmptyResponse = true)
+            return plainChat(service, creds, messages, systemPrompt, requestTimeoutMs = requestTimeoutMs, strictEmptyResponse = true)
         }
 
         return when (service) {
@@ -905,24 +970,9 @@ class RemoteDataRepository(
         }
         // Process every attached file: classify, compress/encode, and build an Attachment.
         // readBytes() is suspend, so this happens before the StateFlow.update block.
-        // 目录（文件夹）会被递归展开为其中的受支持文件；目录内不支持或过大的子文件将被
-        // 跳过（不整体报错），顶层直接添加的文件仍保持原有强校验语义。
-        val attachments = files.flatMap { file ->
-            if (file.isDirectory()) {
-                val collected = mutableListOf<Attachment>()
-                suspend fun walk(current: PlatformFile) {
-                    if (current.isDirectory()) {
-                        runCatching { current.list() }.getOrDefault(emptyList()).forEach { walk(it) }
-                    } else {
-                        runCatching { fileToAttachmentOrNull(current) }.getOrNull()?.let { collected.add(it) }
-                    }
-                }
-                walk(file)
-                collected
-            } else {
-                listOf(fileToAttachmentOrThrow(file))
-            }
-        }.toImmutableList()
+        // Directories are expanded with junk-dir skips and a size cap; unsupported
+        // or oversized children are skipped.
+        val attachments = buildAttachmentsFromFiles(files).toImmutableList()
 
         if (question != null) {
             chatHistory.update {
@@ -937,6 +987,7 @@ class RemoteDataRepository(
                     )
                 }
             }
+            saveCurrentConversation()
         }
 
         compactHistoryIfNeeded()
@@ -972,6 +1023,7 @@ class RemoteDataRepository(
                 // No retry wrapper here: each network call retries inside askWithService.
                 // Retrying the whole call would re-enter the tool loop against a chat
                 // history already mutated by the failed attempt.
+                val started = kotlin.time.TimeSource.Monotonic.markNow()
                 val turn = try {
                     askWithService(entry.service, messages, systemPrompt, entry.instanceId)
                 } catch (e: Exception) {
@@ -1002,6 +1054,17 @@ class RemoteDataRepository(
                     }
                 }
                 saveCurrentConversation()
+                val modelId = appSettings.getInstanceEffectiveModelId(entry.instanceId).ifEmpty { currentModelId() }
+                TaskAutoScore.record(
+                    repository = this,
+                    serviceId = entry.service.id,
+                    modelId = modelId,
+                    modelLabel = "${entry.service.displayName} / $modelId",
+                    response = turn.content,
+                    elapsedMs = started.elapsedNow().inWholeMilliseconds,
+                    attempts = index + 1,
+                    failed = false,
+                )
                 return
             }
 
@@ -1561,9 +1624,19 @@ class RemoteDataRepository(
             updatedAt = now,
             title = title,
             type = existingConversation?.type ?: if (interactiveModeFlag) Conversation.TYPE_INTERACTIVE else Conversation.TYPE_CHAT,
+            parentId = existingConversation?.parentId ?: Conversation.FOLDER_SINGLE_MODE_ID,
+            metadataJson = existingConversation?.metadataJson ?: "",
         )
 
         conversationStorage.saveConversation(conversation)
+        ensureStoredHierarchy()
+    }
+
+    private fun ensureStoredHierarchy() {
+        val ensured = ConversationFolderManager.ensureHierarchy(conversationStorage.conversations.value)
+        if (ensured != conversationStorage.conversations.value) {
+            conversationStorage.replaceAll(ensured)
+        }
     }
 
     override fun clearHistory() {
@@ -1605,6 +1678,7 @@ class RemoteDataRepository(
     // Conversation management
     override fun loadConversations() {
         conversationStorage.loadConversations()
+        ensureStoredHierarchy()
     }
 
     override fun loadConversation(id: String) {
@@ -1681,15 +1755,10 @@ class RemoteDataRepository(
     }
 
     override fun restoreCurrentConversation() {
-        // One-time migration for existing users: pin the latest conversation as the new
-        // "current" pointer so the upgrade is non-disruptive.
+        // One-time migration: mark the current-conversation pointer as migrated without
+        // auto-loading the latest chat. Launch always opens an empty CUI screen.
         if (!appSettings.isCurrentConversationMigrated()) {
-            val latest = savedConversations.value.maxByOrNull { it.updatedAt }
-            if (latest != null) {
-                loadConversation(latest.id)
-            }
             appSettings.markCurrentConversationMigrated()
-            return
         }
 
         // Already-loaded guard (covers re-entry from refreshSettings)
@@ -1872,6 +1941,12 @@ class RemoteDataRepository(
 
     override fun setThemeMode(mode: ThemeMode) {
         appSettings.setThemeMode(mode)
+    }
+
+    override fun getSettingsTab(): String? = appSettings.getSettingsTab()
+
+    override fun setSettingsTab(tab: String) {
+        appSettings.setSettingsTab(tab)
     }
 
     private var interactiveModeFlag = appSettings.getCurrentInteractiveMode()
@@ -2144,6 +2219,18 @@ class RemoteDataRepository(
     }
 
     override suspend fun askSilentlyWithInstance(instanceId: String, prompt: String, timeoutMs: Long): String {
+        if (instanceId == "free") {
+            val messages = listOf(History(role = History.Role.USER, content = prompt))
+            val creds = instanceCredentials("free", Service.Free)
+            return plainChat(
+                service = Service.Free,
+                credentials = creds,
+                messages = messages,
+                systemPrompt = null,
+                requestTimeoutMs = timeoutMs.takeIf { it > 0 },
+                retry = false,
+            ).content
+        }
         val instance = getConfiguredServiceInstances().find { it.instanceId == instanceId }
             ?: return askSilently(prompt)
         val service = Service.fromId(instance.serviceId)
@@ -2172,6 +2259,18 @@ class RemoteDataRepository(
         systemPrompt: String?,
         timeoutMs: Long,
     ): String {
+        if (instanceId == "free") {
+            val messages = listOf(History(role = History.Role.USER, content = prompt))
+            val creds = instanceCredentials("free", Service.Free).copy(modelId = modelId)
+            return plainChat(
+                service = Service.Free,
+                credentials = creds,
+                messages = messages,
+                systemPrompt = systemPrompt,
+                requestTimeoutMs = timeoutMs.takeIf { it > 0 },
+                retry = false,
+            ).content
+        }
         val instance = getConfiguredServiceInstances().find { it.instanceId == instanceId }
             ?: return ""
         val service = Service.fromId(instance.serviceId)
@@ -2192,6 +2291,480 @@ class RemoteDataRepository(
             requestTimeoutMs = timeoutMs.takeIf { it > 0 },
             retry = false,
         ).content
+    }
+
+    override suspend fun askInConversation(
+        conversationId: String,
+        instanceId: String,
+        modelId: String,
+        question: String,
+        timeoutMs: Long,
+        files: List<PlatformFile>,
+    ): String {
+        val conversation = savedConversations.value.find { it.id == conversationId } ?: return ""
+        val localHistory = MutableStateFlow(conversation.messages.map { messageToHistory(it) })
+        val attachments = buildAttachmentsFromFiles(files, conversationId).toImmutableList()
+        val needsUserMessage = localHistory.value.lastOrNull()?.let { last ->
+            last.role != History.Role.USER || last.content != question
+        } ?: true
+        if (needsUserMessage) {
+            localHistory.update { history ->
+                history.toMutableList().apply {
+                    add(History(role = History.Role.USER, content = question, attachments = attachments))
+                }
+            }
+        }
+        val service = serviceForInstanceId(instanceId) ?: return ""
+        val systemPrompt = getActiveSystemPrompt()
+
+        suspend fun execute(): String = withContext(ConversationIdElement(conversationId)) {
+            val turn = askWithService(
+                service = service,
+                messages = localHistory.value,
+                systemPrompt = systemPrompt,
+                instanceId = instanceId,
+                history = localHistory,
+                modelIdOverride = modelId,
+                requestTimeoutMs = timeoutMs.takeIf { it > 0 },
+            )
+            localHistory.update { history ->
+                history.toMutableList().apply {
+                    add(
+                        History(
+                            role = History.Role.ASSISTANT,
+                            content = turn.content,
+                            reasoningContent = turn.reasoningContent,
+                        ),
+                    )
+                }
+            }
+            turn.content
+        }
+
+        // Total wall-clock timeout is not applied: maxWait is an idle/no-output timeout
+        // enforced as HTTP socketTimeout on the request. Streaming that already produced
+        // bytes is allowed to finish.
+        val content = execute()
+
+        persistConversationHistory(conversationId, localHistory.value, conversation)
+        return content
+    }
+
+    private fun serviceForInstanceId(instanceId: String): Service? {
+        if (instanceId == "free") return Service.Free
+        val instance = getConfiguredServiceInstances().find { it.instanceId == instanceId } ?: return null
+        return Service.fromId(instance.serviceId)
+    }
+
+    private suspend fun buildAttachmentsFromFiles(
+        files: List<PlatformFile>,
+        conversationId: String = "",
+    ): List<Attachment> {
+        val t0 = Clock.System.now().toEpochMilliseconds()
+        var visited = 0
+        var attachedCount = 0
+        var skipped = 0
+        val dirFlags = files.joinToString(",") { f ->
+            "${f.name.take(48)}:${runCatching { f.isDirectory() }.getOrDefault(false)}"
+        }
+        return try {
+            var inlineBytes = 0
+            val result = files.flatMap { file ->
+                val isDir = runCatching { file.isDirectory() }.getOrDefault(false)
+                if (isDir) {
+                    val collected = mutableListOf<Attachment>()
+                    suspend fun walk(current: PlatformFile, rel: String) {
+                        kotlin.coroutines.coroutineContext.ensureActive()
+                        if (attachedCount >= FolderAttachments.MAX_INLINE_FILES ||
+                            inlineBytes >= FolderAttachments.MAX_INLINE_BYTES
+                        ) {
+                            skipped++
+                            return
+                        }
+                        visited++
+                        val isCurrentDir = try {
+                            current.isDirectory()
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            false
+                        }
+                        if (isCurrentDir) {
+                            if (rel.isNotEmpty() && FolderAttachments.isSkippedDirectoryName(current.name)) return
+                            val children = try {
+                                current.list()
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                emptyList()
+                            }
+                            for (child in children) {
+                                val childRel = if (rel.isEmpty()) child.name else "$rel/${child.name}"
+                                walk(child, childRel)
+                            }
+                        } else {
+                            if (attachedCount >= FolderAttachments.MAX_INLINE_FILES ||
+                                inlineBytes >= FolderAttachments.MAX_INLINE_BYTES
+                            ) {
+                                skipped++
+                                return
+                            }
+                            val att = try {
+                                fileToAttachmentOrNull(current)?.copy(fileName = rel.ifBlank { current.name })
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                null
+                            }
+                            if (att != null) {
+                                collected.add(att)
+                                attachedCount++
+                                inlineBytes += att.data.length
+                            } else {
+                                skipped++
+                            }
+                        }
+                    }
+                    walk(file, "")
+                    collected
+                } else {
+                    visited++
+                    listOf(fileToAttachmentOrThrow(file))
+                }
+            }
+            val elapsed = Clock.System.now().toEpochMilliseconds() - t0
+            val payloadChars = result.sumOf { it.data.length }
+            result
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw e
+        }
+    }
+
+    override suspend fun retryCollaborationModel(conversationId: String, timeoutMs: Long): String {
+        val conversation = savedConversations.value.find { it.id == conversationId } ?: return ""
+        val meta = conversation.metadata()
+        val question = meta.collaborationQuestion ?: conversation.messages.firstOrNull { it.role == "user" }?.content.orEmpty()
+        val instanceId = meta.instanceId ?: return ""
+        val modelId = meta.modelId ?: return ""
+        val trimmed = conversation.messages.toMutableList()
+        while (trimmed.isNotEmpty()) {
+            val last = trimmed.last()
+            if (last.role == "assistant" || last.role == "tool") {
+                trimmed.removeAt(trimmed.lastIndex)
+            } else {
+                break
+            }
+        }
+        val cleared = conversation.copy(
+            messages = trimmed,
+            updatedAt = Clock.System.now().toEpochMilliseconds(),
+            metadataJson = meta.copy(status = CollaborationModelStatus.RUNNING.name).encode(),
+        )
+        conversationStorage.saveConversation(cleared)
+        updateCollaborationModelStatus(conversationId, CollaborationModelStatus.RUNNING, null)
+        return askInConversation(conversationId, instanceId, modelId, question, timeoutMs)
+    }
+
+    override fun setCollaborationModelUserScore(conversationId: String, score: Double) {
+        val conversation = savedConversations.value.find { it.id == conversationId } ?: return
+        val updated = conversation.withMetadata(conversation.metadata().copy(userScore = score))
+        conversationStorage.saveConversation(updated)
+        val meta = conversation.metadata()
+        val instanceId = meta.instanceId
+        val modelId = meta.modelId
+        if (instanceId != null && modelId != null) {
+            val entry = getServiceEntries().find { it.instanceId == instanceId }
+            val serviceId = entry?.serviceId ?: ""
+            val label = entry?.modelOptions?.find { it.id == modelId }?.label ?: modelId
+            upsertModelBenchmark(
+                ModelBenchmark(
+                    modelKey = "$serviceId::$modelId",
+                    modelLabel = label,
+                    serviceId = serviceId,
+                    isUserScore = true,
+                    note = "用户自主打分结果",
+                    totalScore = score,
+                    completion = score,
+                    testedAt = Clock.System.now().toEpochMilliseconds(),
+                ),
+            )
+        }
+    }
+
+    override suspend fun createCollaborationTask(question: String, params: CollaborationWizardParams): String {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val title = ConversationFolderManager.nextTaskFolderTitle(savedConversations.value, now)
+        val id = Uuid.random().toString()
+        val metadata = ConversationMetadata(
+            collaborationQuestion = question,
+            minScoreThreshold = params.minScoreThreshold,
+            maxWaitSeconds = params.maxWaitSeconds,
+            retryCount = params.retryCount,
+            notifyOnFailure = params.notifyOnFailure,
+            notifyOnComplete = params.notifyOnComplete,
+            status = CollaborationModelStatus.RUNNING.name,
+        )
+        val task = Conversation(
+            id = id,
+            messages = emptyList(),
+            createdAt = now,
+            updatedAt = now,
+            title = title,
+            type = Conversation.TYPE_COLLABORATION_TASK,
+            parentId = Conversation.FOLDER_COLLABORATION_MODE_ID,
+            metadataJson = metadata.encode(),
+        )
+        conversationStorage.saveConversation(task)
+        ensureStoredHierarchy()
+        return id
+    }
+
+    override suspend fun createCollaborationModelConversation(
+        taskId: String,
+        ref: ModelRef,
+        folderTitle: String,
+        question: String,
+        params: CollaborationWizardParams,
+    ): String {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val id = Uuid.random().toString()
+        val metadata = ConversationMetadata(
+            collaborationQuestion = question,
+            instanceId = ref.instanceId,
+            modelId = ref.modelId,
+            status = CollaborationModelStatus.RUNNING.name,
+            minScoreThreshold = params.minScoreThreshold,
+            maxWaitSeconds = params.maxWaitSeconds,
+            retryCount = params.retryCount,
+            notifyOnFailure = params.notifyOnFailure,
+            notifyOnComplete = params.notifyOnComplete,
+        )
+        val conversation = Conversation(
+            id = id,
+            messages = emptyList(),
+            createdAt = now,
+            updatedAt = now,
+            title = folderTitle,
+            type = Conversation.TYPE_COLLABORATION_MODEL,
+            parentId = taskId,
+            metadataJson = metadata.encode(),
+        )
+        conversationStorage.saveConversation(conversation)
+        ensureStoredHierarchy()
+        return id
+    }
+
+    override fun updateCollaborationModelStatus(
+        conversationId: String,
+        status: CollaborationModelStatus,
+        response: String?,
+    ) {
+        val conversation = savedConversations.value.find { it.id == conversationId } ?: return
+        val meta = conversation.metadata().copy(status = status.name)
+        val updated = conversation.withMetadata(meta).copy(updatedAt = Clock.System.now().toEpochMilliseconds())
+        conversationStorage.saveConversation(updated)
+    }
+
+    override fun completeTaskConversation(taskId: String, status: CollaborationModelStatus) {
+        val conversation = savedConversations.value.find { it.id == taskId } ?: return
+        val updated = conversation
+            .withMetadata(conversation.metadata().copy(status = status.name))
+            .copy(updatedAt = Clock.System.now().toEpochMilliseconds())
+        conversationStorage.saveConversation(updated)
+        ensureStoredHierarchy()
+    }
+
+    override suspend fun createWarTask(
+        question: String,
+        params: com.inspiredandroid.kai.data.war.WarWizardParams,
+        summaryRef: ModelRef,
+    ): String {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val title = ConversationFolderManager.nextWarTaskFolderTitle(savedConversations.value, now)
+        val id = Uuid.random().toString()
+        val metadata = ConversationMetadata(
+            collaborationQuestion = question,
+            minScoreThreshold = params.minScoreThreshold,
+            maxWaitSeconds = params.maxWaitSeconds,
+            retryCount = params.retryCount,
+            notifyOnFailure = params.notifyOnFailure,
+            notifyOnComplete = params.notifyOnComplete,
+            status = CollaborationModelStatus.RUNNING.name,
+            taskMode = "war",
+            summaryModelInstanceId = summaryRef.instanceId,
+            summaryModelId = summaryRef.modelId,
+        )
+        val task = Conversation(
+            id = id,
+            messages = emptyList(),
+            createdAt = now,
+            updatedAt = now,
+            title = title,
+            type = Conversation.TYPE_WAR_TASK,
+            parentId = Conversation.FOLDER_WAR_MODE_ID,
+            metadataJson = metadata.encode(),
+        )
+        conversationStorage.saveConversation(task)
+        ensureStoredHierarchy()
+        return id
+    }
+
+    override suspend fun createWarModelConversation(
+        taskId: String,
+        ref: ModelRef,
+        folderTitle: String,
+        question: String,
+        params: com.inspiredandroid.kai.data.war.WarWizardParams,
+        isSummaryModel: Boolean,
+    ): String {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val id = Uuid.random().toString()
+        val metadata = ConversationMetadata(
+            collaborationQuestion = question,
+            instanceId = ref.instanceId,
+            modelId = ref.modelId,
+            status = CollaborationModelStatus.RUNNING.name,
+            minScoreThreshold = params.minScoreThreshold,
+            maxWaitSeconds = params.maxWaitSeconds,
+            retryCount = params.retryCount,
+            notifyOnFailure = params.notifyOnFailure,
+            notifyOnComplete = params.notifyOnComplete,
+            taskMode = "war",
+            isSummaryModel = isSummaryModel,
+        )
+        val conversation = Conversation(
+            id = id,
+            messages = emptyList(),
+            createdAt = now,
+            updatedAt = now,
+            title = folderTitle,
+            type = Conversation.TYPE_WAR_MODEL,
+            parentId = taskId,
+            metadataJson = metadata.encode(),
+        )
+        conversationStorage.saveConversation(conversation)
+        ensureStoredHierarchy()
+        return id
+    }
+
+    override suspend fun createWarResultConversation(taskId: String): String {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val id = Uuid.random().toString()
+        val conversation = Conversation(
+            id = id,
+            messages = emptyList(),
+            createdAt = now,
+            updatedAt = now,
+            title = Conversation.WAR_RESULT_TITLE,
+            type = Conversation.TYPE_WAR_RESULT,
+            parentId = taskId,
+            metadataJson = ConversationMetadata(taskMode = "war").encode(),
+        )
+        conversationStorage.saveConversation(conversation)
+        ensureStoredHierarchy()
+        return id
+    }
+
+    override fun saveWarTaskResult(taskId: String, result: WarTaskResult) {
+        val task = savedConversations.value.find { it.id == taskId } ?: return
+        val meta = task.metadata().copy(
+            status = if (result.phase == WarPhase.DONE.name || result.phase == WarPhase.FAILED.name) {
+                CollaborationModelStatus.COMPLETED.name
+            } else {
+                CollaborationModelStatus.RUNNING.name
+            },
+            warResultJson = result.encodeJson(),
+        )
+        val updatedTask = task.withMetadata(meta).copy(updatedAt = Clock.System.now().toEpochMilliseconds())
+        conversationStorage.saveConversation(updatedTask)
+
+        val resultConv = savedConversations.value.find {
+            it.parentId == taskId && it.type == Conversation.TYPE_WAR_RESULT
+        }
+        if (resultConv != null) {
+            val resultMeta = resultConv.metadata().copy(warResultJson = result.encodeJson())
+            conversationStorage.saveConversation(
+                resultConv.withMetadata(resultMeta).copy(updatedAt = Clock.System.now().toEpochMilliseconds()),
+            )
+        }
+        ensureStoredHierarchy()
+    }
+
+    override fun appendConversationExchange(conversationId: String, userContent: String, assistantContent: String) {
+        val conversation = savedConversations.value.find { it.id == conversationId } ?: return
+        val now = Clock.System.now().toEpochMilliseconds()
+        val userMsg = Conversation.Message(
+            id = Uuid.random().toString(),
+            role = "user",
+            content = userContent,
+        )
+        val assistantMsg = Conversation.Message(
+            id = Uuid.random().toString(),
+            role = "assistant",
+            content = assistantContent,
+        )
+        conversationStorage.saveConversation(
+            conversation.copy(
+                messages = conversation.messages + userMsg + assistantMsg,
+                updatedAt = now,
+            ),
+        )
+        ensureStoredHierarchy()
+    }
+
+    private fun messageToHistory(m: Conversation.Message): History {
+        val attachments = when {
+            m.attachments.isNotEmpty() -> m.attachments.toImmutableList()
+            m.data != null && m.mimeType != null ->
+                persistentListOf(Attachment(data = m.data, mimeType = m.mimeType, fileName = m.fileName))
+            else -> persistentListOf()
+        }
+        return History(
+            id = m.id,
+            role = when (m.role) {
+                "user" -> History.Role.USER
+                "tool" -> History.Role.TOOL
+                else -> History.Role.ASSISTANT
+            },
+            content = m.content,
+            attachments = attachments,
+            uiSubmission = m.uiSubmission,
+            isThinking = m.isThinking,
+            reasoningContent = m.reasoningContent,
+        )
+    }
+
+    private fun persistConversationHistory(
+        conversationId: String,
+        history: List<History>,
+        existing: Conversation,
+    ) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val conversation = existing.copy(
+            messages = history
+                .filter { it.role != History.Role.TOOL_EXECUTING }
+                .map { h ->
+                    Conversation.Message(
+                        id = h.id,
+                        role = when (h.role) {
+                            History.Role.USER -> "user"
+                            History.Role.ASSISTANT -> "assistant"
+                            History.Role.TOOL -> "tool"
+                            History.Role.TOOL_EXECUTING -> "tool"
+                        },
+                        content = h.content,
+                        attachments = h.attachments,
+                        uiSubmission = h.uiSubmission,
+                        isThinking = h.isThinking,
+                        reasoningContent = h.reasoningContent,
+                    )
+                },
+            updatedAt = now,
+        )
+        conversationStorage.saveConversation(conversation)
+        ensureStoredHierarchy()
     }
 
     override fun getChatMode(): ChatMode = appSettings.getChatMode()

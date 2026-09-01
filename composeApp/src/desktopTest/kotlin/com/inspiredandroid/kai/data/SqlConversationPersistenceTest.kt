@@ -95,6 +95,30 @@ class SqlConversationPersistenceTest {
     }
 
     @Test
+    fun `replaceAll persists folder hierarchy columns`() {
+        val persistence = createPersistence()
+        val folders = ConversationFolderManager.ensureHierarchy(
+            listOf(
+                Conversation(
+                    id = "chat-1",
+                    messages = emptyList(),
+                    createdAt = 1000L,
+                    updatedAt = 2000L,
+                    title = "Hi",
+                    type = Conversation.TYPE_CHAT,
+                    parentId = Conversation.FOLDER_SINGLE_MODE_ID,
+                ),
+            ),
+        )
+        persistence.replaceAll(folders)
+
+        val loaded = persistence.loadAll()
+        val singleRoot = loaded.find { it.id == Conversation.FOLDER_SINGLE_MODE_ID }
+        assertEquals(Conversation.FOLDER_SINGLE_MODE_TITLE, singleRoot?.title)
+        assertEquals(Conversation.FOLDER_SINGLE_MODE_ID, loaded.find { it.id == "chat-1" }?.parentId)
+    }
+
+    @Test
     fun `replaceAll swaps the full content`() {
         val persistence = createPersistence()
         persistence.save(conversation("old", 1000L, "Hello"), emptyList())

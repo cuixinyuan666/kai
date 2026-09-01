@@ -7,8 +7,8 @@ import com.inspiredandroid.kai.data.Attachment
 import com.inspiredandroid.kai.data.FallbackStatus
 import com.inspiredandroid.kai.data.ReasoningRequestMode
 import com.inspiredandroid.kai.data.ServiceEntry
+import com.inspiredandroid.kai.data.collaboration.CollaborationConfig
 import com.inspiredandroid.kai.data.collaboration.CollaborationEvent
-import com.inspiredandroid.kai.data.collaboration.CollaborationRoundSnapshot
 import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.SharedJson
 import com.inspiredandroid.kai.data.SmsDraft
@@ -69,6 +69,11 @@ data class ConversationSummary(
     val updatedAt: Long,
     val isHeartbeat: Boolean = false,
     val isInteractive: Boolean = false,
+    val type: String = com.inspiredandroid.kai.data.Conversation.TYPE_CHAT,
+    val parentId: String? = null,
+    val collaborationStatus: com.inspiredandroid.kai.data.CollaborationModelStatus? = null,
+    val userScore: Double? = null,
+    val collaborationQuestion: String? = null,
 )
 
 @Immutable
@@ -100,16 +105,27 @@ data class ChatUiState(
     val modelBenchmarks: ImmutableMap<String, Double> = persistentMapOf(),
     // 协作模式
     val chatMode: ChatMode = ChatMode.SINGLE,
-    val isCollaborating: Boolean = false,
     val collaborationEvents: List<CollaborationEvent> = emptyList(),
     val collaborationSummary: String? = null,
     val collaborationNotification: String? = null,
-    /** 当前协作任务的用户原始提问。 */
-    val collaborationQuestion: String? = null,
-    val collaborationRound: Int = 0,
-    val collaborationRounds: List<CollaborationRoundSnapshot> = emptyList(),
-    /** 上一轮有成功作答的模型时，可继续下一轮。 */
-    val canContinueCollaboration: Boolean = false,
+    val isCollaborating: Boolean = false,
+    val showCollaborationWizard: Boolean = false,
+    val collaborationModelViewId: String? = null,
+    val historyTreeParentId: String? = null,
+    val folderConversations: ImmutableList<com.inspiredandroid.kai.data.Conversation> = persistentListOf(),
+    val collaborationConfig: CollaborationConfig = CollaborationConfig(),
+    val pendingCopyText: String? = null,
+    val showHistoryTree: Boolean = false,
+    val pendingPromptText: String? = null,
+    val isOptimizingPrompt: Boolean = false,
+    // 战争模式
+    val showWarWizard: Boolean = false,
+    val isWarRunning: Boolean = false,
+    val warEvents: List<com.inspiredandroid.kai.data.war.WarEvent> = emptyList(),
+    val warSummary: String? = null,
+    val warNotification: String? = null,
+    val warResultViewTaskId: String? = null,
+    val collaborationHighlightMessageId: String? = null,
 ) {
     val heartbeatConversationId: String?
         get() = savedConversations.firstOrNull { it.isHeartbeat }?.id

@@ -1,5 +1,6 @@
 package com.inspiredandroid.kai.data.collaboration
 
+import com.inspiredandroid.kai.data.CollaborationModelStatus
 import kotlinx.serialization.Serializable
 
 /**
@@ -49,14 +50,23 @@ data class ModelScore(
 @Serializable
 data class CollaborationConfig(
     val enabled: Boolean = false,
-    /** 单次模型调用的最大等待时间（秒），默认 60。 */
+    /** 单次模型调用的最大等待时间（秒），默认 60。向导可覆盖。 */
     val maxWaitSeconds: Int = 60,
     val retryCount: Int = 2,
-    val modelPrompt: String = DEFAULT_COLLABORATION_PROMPT,
     val notifyOnFailure: Boolean = true,
     val notifyOnComplete: Boolean = true,
-    val scores: List<ModelScore> = emptyList(),
     val modelAliases: Map<String, String> = emptyMap(),
+)
+
+/** 协作向导一次性任务参数。 */
+data class CollaborationWizardParams(
+    val question: String,
+    val minScoreThreshold: Double,
+    val maxWaitSeconds: Int,
+    val retryCount: Int,
+    val notifyOnFailure: Boolean,
+    val notifyOnComplete: Boolean,
+    val attachedFiles: List<io.github.vinceglb.filekit.PlatformFile> = emptyList(),
 )
 
 /**
@@ -95,15 +105,15 @@ data class CollaborationModelSnapshot(
 )
 
 interface CollaborationListener {
+    fun onTaskStarted(taskId: String) {}
+
     fun onEvent(event: CollaborationEvent)
 
     fun onNotify(title: String, body: String)
 
-    fun onScores(scores: List<ModelScore>)
+    fun onModelStatusChanged(conversationId: String, status: CollaborationModelStatus)
 
-    fun onRoundFinished(round: Int, snapshot: CollaborationRoundSnapshot, canContinue: Boolean)
-
-    fun onFinished(summary: String, allSucceeded: Boolean)
+    fun onTaskFinished(taskId: String, summary: String)
 }
 
 /** 第二轮及之后转发给模型的固定格式：原始问题 + 上次回答 + 审阅要求。 */
@@ -138,9 +148,3 @@ fun buildCollaborationCopyText(question: String, rounds: List<CollaborationRound
         }
     }.trimEnd()
 }
-
-const val DEFAULT_COLLABORATION_PROMPT = """
-你是一个协作参与者。请认真理解问题并给出完整、可执行的方案或答案。
-输出应结构清晰、重点突出。
-请直接输出正文，不要添加角色自述或流程说明。
-"""

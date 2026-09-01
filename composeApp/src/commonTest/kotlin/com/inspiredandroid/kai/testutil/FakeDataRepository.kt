@@ -34,6 +34,7 @@ import com.inspiredandroid.kai.network.tools.ToolInfo
 import com.inspiredandroid.kai.tools.CommonTools
 import com.inspiredandroid.kai.ui.chat.History
 import com.inspiredandroid.kai.ui.settings.SettingsModel
+import com.inspiredandroid.kai.ui.settings.SettingsTab
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,22 +85,38 @@ class FakeDataRepository : DataRepository {
         }
         val instance = ServiceInstance(instanceId = instanceId, serviceId = serviceId)
         configuredInstances.add(instance)
-        freeServicePrimary = false
+        if (instance.instanceId !in displayOrder) {
+            displayOrder = displayOrder.ifEmpty { listOf("free") } + instance.instanceId
+        }
         return instance
     }
 
     override fun removeConfiguredService(instanceId: String) {
         configuredInstances.removeAll { it.instanceId == instanceId }
+        displayOrder = displayOrder.filter { it != instanceId }
         instanceApiKeys.remove(instanceId)
         instanceBaseUrls.remove(instanceId)
         instanceModels.remove(instanceId)
     }
 
     override fun reorderConfiguredServices(orderedInstanceIds: List<String>) {
+        displayOrder = orderedInstanceIds.distinct()
         val byId = configuredInstances.associateBy { it.instanceId }
-        val reordered = orderedInstanceIds.mapNotNull { byId[it] }
+        val reordered = orderedInstanceIds.filter { it != "free" }.mapNotNull { byId[it] }
         configuredInstances.clear()
         configuredInstances.addAll(reordered)
+        freeServicePrimary = orderedInstanceIds.firstOrNull() == "free"
+    }
+
+    private var displayOrder: List<String> = emptyList()
+
+    override fun getServiceDisplayOrder(): List<String> {
+        val ids = configuredInstances.map { it.instanceId }
+        if (displayOrder.isNotEmpty()) {
+            val known = (listOf("free") + ids).toSet()
+            return displayOrder.filter { it in known } + ids.filter { it !in displayOrder.toSet() }
+        }
+        return if (freeServicePrimary || ids.isEmpty()) listOf("free") + ids else ids + "free"
     }
 
     var fakeServiceEntries: List<ServiceEntry> = emptyList()
@@ -510,6 +527,64 @@ class FakeDataRepository : DataRepository {
         timeoutMs: Long,
     ): String = ""
 
+    override suspend fun askInConversation(
+        conversationId: String,
+        instanceId: String,
+        modelId: String,
+        question: String,
+        timeoutMs: Long,
+        files: List<io.github.vinceglb.filekit.PlatformFile>,
+    ): String = ""
+
+    override suspend fun retryCollaborationModel(conversationId: String, timeoutMs: Long): String = ""
+
+    override fun setCollaborationModelUserScore(conversationId: String, score: Double) {}
+
+    override suspend fun createCollaborationTask(
+        question: String,
+        params: com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams,
+    ): String = "fake-task"
+
+    override suspend fun createCollaborationModelConversation(
+        taskId: String,
+        ref: com.inspiredandroid.kai.data.collaboration.ModelRef,
+        folderTitle: String,
+        question: String,
+        params: com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams,
+    ): String = "fake-model"
+
+    override fun updateCollaborationModelStatus(
+        conversationId: String,
+        status: com.inspiredandroid.kai.data.CollaborationModelStatus,
+        response: String?,
+    ) {}
+
+    override fun completeTaskConversation(
+        taskId: String,
+        status: com.inspiredandroid.kai.data.CollaborationModelStatus,
+    ) {}
+
+    override suspend fun createWarTask(
+        question: String,
+        params: com.inspiredandroid.kai.data.war.WarWizardParams,
+        summaryRef: com.inspiredandroid.kai.data.collaboration.ModelRef,
+    ): String = "fake-war-task"
+
+    override suspend fun createWarModelConversation(
+        taskId: String,
+        ref: com.inspiredandroid.kai.data.collaboration.ModelRef,
+        folderTitle: String,
+        question: String,
+        params: com.inspiredandroid.kai.data.war.WarWizardParams,
+        isSummaryModel: Boolean,
+    ): String = "fake-war-model"
+
+    override suspend fun createWarResultConversation(taskId: String): String = "fake-war-result"
+
+    override fun saveWarTaskResult(taskId: String, result: com.inspiredandroid.kai.data.war.WarTaskResult) {}
+
+    override fun appendConversationExchange(conversationId: String, userContent: String, assistantContent: String) {}
+
     override fun getChatMode(): ChatMode = ChatMode.SINGLE
     override fun setChatMode(mode: ChatMode) {}
     override fun getCollaborationConfig(): CollaborationConfig = CollaborationConfig()
@@ -675,4 +750,12 @@ class FakeDataRepository : DataRepository {
     override suspend fun importLocalModel(source: PlatformFile): ModelImportResult = ModelImportResult.Failure(ModelImportError.COPY_FAILED)
     override fun cancelLocalModelImport() {}
     override suspend fun deleteLocalModel(modelId: String) {}
+
+    private var settingsTab: String? = null
+
+    override fun getSettingsTab(): String? = settingsTab
+
+    override fun setSettingsTab(tab: String) {
+        settingsTab = tab
+    }
 }

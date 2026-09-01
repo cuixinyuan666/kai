@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -81,6 +82,7 @@ import com.inspiredandroid.kai.inference.estimateGpuMemoryMb
 import com.inspiredandroid.kai.network.dtos.SponsorsResponseDto
 import com.inspiredandroid.kai.ui.KaiClearableTextField
 import com.inspiredandroid.kai.ui.components.KaiSlider
+import com.inspiredandroid.kai.ui.components.ServiceMetaBadges
 import com.inspiredandroid.kai.ui.components.VerticalScrollbarForScroll
 import com.inspiredandroid.kai.ui.handCursor
 import com.inspiredandroid.kai.ui.icons.DragIndicator
@@ -125,8 +127,6 @@ import kai.composeapp.generated.resources.settings_contact_sponsorship
 import kai.composeapp.generated.resources.settings_custom_model_hint
 import kai.composeapp.generated.resources.settings_custom_model_label
 import kai.composeapp.generated.resources.settings_free_fallback
-import kai.composeapp.generated.resources.settings_free_tier_description
-import kai.composeapp.generated.resources.settings_free_tier_title
 import kai.composeapp.generated.resources.settings_model_label
 import kai.composeapp.generated.resources.settings_open_app_settings
 import kai.composeapp.generated.resources.settings_openai_compatible_or_other_service
@@ -153,118 +153,6 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import sh.calvin.reorderable.ReorderableColumn
 import kotlin.math.roundToInt
-
-@Composable
-internal fun FreeSettings(
-    showFallbackToggle: Boolean = false,
-    isFreeFallbackEnabled: Boolean = true,
-    onToggleFreeFallback: (Boolean) -> Unit = {},
-    currentSponsors: ImmutableList<SponsorsResponseDto.Sponsor> = persistentListOf(),
-    pastSponsors: ImmutableList<SponsorsResponseDto.Sponsor> = persistentListOf(),
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = kaiAdaptiveCardColors(),
-        border = kaiAdaptiveCardBorder(),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = stringResource(Res.string.settings_free_tier_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-
-            if (showFallbackToggle) {
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onToggleFreeFallback(!isFreeFallbackEnabled) }
-                        .handCursor(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = stringResource(Res.string.settings_free_fallback),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Switch(
-                        checked = isFreeFallbackEnabled,
-                        onCheckedChange = onToggleFreeFallback,
-                    )
-                }
-                Spacer(Modifier.height(6.dp))
-            }
-
-            Spacer(Modifier.height(6.dp))
-
-            Text(
-                text = stringResource(Res.string.settings_free_tier_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            val uriHandler = LocalUriHandler.current
-            Button(
-                onClick = {
-                    uriHandler.openUri("https://github.com/sponsors/SimonSchubert")
-                },
-                Modifier
-                    .align(CenterHorizontally)
-                    .handCursor(),
-            ) {
-                Icon(Icons.Default.Favorite, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(Res.string.settings_become_sponsor))
-            }
-
-            val allSponsors = remember(currentSponsors, pastSponsors) {
-                val activeUsernames = currentSponsors.map { it.username }.toSet()
-                (currentSponsors + pastSponsors.filter { it.username !in activeUsernames })
-                    .toImmutableList()
-            }
-
-            if (allSponsors.isNotEmpty()) {
-                Spacer(Modifier.height(16.dp))
-                HorizontalDivider(thickness = 0.5.dp)
-                Spacer(Modifier.height(16.dp))
-                SponsorList(
-                    title = stringResource(Res.string.settings_sponsors),
-                    sponsors = allSponsors,
-                )
-            }
-
-            Spacer(Modifier.height(16.dp))
-            HorizontalDivider(thickness = 0.5.dp)
-            Spacer(Modifier.height(16.dp))
-
-            Text(
-                text = stringResource(Res.string.settings_business_partnerships),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = stringResource(Res.string.settings_business_partnerships_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            TextButton(
-                onClick = {
-                    uriHandler.openUri("https://schubert-simon.de")
-                },
-                Modifier
-                    .handCursor(),
-            ) {
-                Text(stringResource(Res.string.settings_contact_sponsorship))
-            }
-        }
-    }
-}
 
 @Composable
 private fun SponsorList(
@@ -331,22 +219,7 @@ internal fun ServicesContent(
         }
     }
 
-    // 一键测试所有大模型
-    ModelBenchmarkCard(
-        benchmarks = uiState.modelBenchmarks,
-        isRunning = uiState.isBenchmarkRunning,
-        progress = uiState.benchmarkProgress,
-        currentLabel = uiState.benchmarkCurrentLabel,
-        done = uiState.benchmarkDone,
-        summary = uiState.benchmarkSummary,
-        onRun = actions.onRunModelBenchmarks,
-        onCancel = actions.onCancelModelBenchmarks,
-        onClear = actions.onClearModelBenchmarks,
-    )
-
-    Spacer(Modifier.height(8.dp))
-
-    // Configured services list
+    // 母模型列表（含 APP-FREE），整体位于「模型测试」卡片上方
     val entries = uiState.configuredServices
     ReorderableColumn(
         list = entries,
@@ -400,22 +273,26 @@ internal fun ServicesContent(
         }
     }
 
+    Spacer(Modifier.height(8.dp))
+
+    ModelBenchmarkCard(
+        benchmarks = uiState.modelBenchmarks,
+        isRunning = uiState.isBenchmarkRunning,
+        progress = uiState.benchmarkProgress,
+        currentLabel = uiState.benchmarkCurrentLabel,
+        done = uiState.benchmarkDone,
+        summary = uiState.benchmarkSummary,
+        onRun = actions.onRunModelBenchmarks,
+        onCancel = actions.onCancelModelBenchmarks,
+        onClear = actions.onClearModelBenchmarks,
+    )
+
     if (uiState.availableServicesToAdd.isNotEmpty()) {
         Spacer(Modifier.height(12.dp))
         OutlinedButton(onClick = { showAddServiceSheet = true }, modifier = Modifier.handCursor()) {
             Text(stringResource(Res.string.settings_add_service))
         }
     }
-
-    // Free tier card (always at bottom)
-    Spacer(Modifier.height(16.dp))
-    FreeSettings(
-        showFallbackToggle = entries.isNotEmpty(),
-        isFreeFallbackEnabled = uiState.isFreeFallbackEnabled,
-        onToggleFreeFallback = actions.onToggleFreeFallback,
-        currentSponsors = uiState.currentSponsors,
-        pastSponsors = uiState.pastSponsors,
-    )
 
     // Add service bottom sheet
     if (showAddServiceSheet) {
@@ -591,11 +468,14 @@ private fun ConfiguredServiceCardContent(
 
                 // Service name and model
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = entry.service.displayName,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onBackground,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = entry.service.displayName,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onBackground,
+                        )
+                        ServiceMetaBadges(entry.service)
+                    }
                     val displayModelId = when {
                         entry.useCustomModel && entry.customModelId.isNotBlank() -> entry.customModelId
                         entry.selectedModel != null -> entry.selectedModel.id
@@ -666,6 +546,17 @@ private fun ConfiguredServiceCardContent(
                         onChangeModelContextTokens = onChangeModelContextTokens,
                         modelContextTokens = modelContextTokens,
                     )
+                } else if (entry.service == Service.Free) {
+                    if (entry.models.isNotEmpty()) {
+                        ModelSelection(
+                            currentSelectedModel = entry.selectedModel,
+                            models = entry.models,
+                            serviceName = entry.service.displayName,
+                            onClick = onSelectModel,
+                            modelBenchmarks = modelBenchmarks,
+                            serviceId = entry.service.id,
+                        )
+                    }
                 } else if (entry.service is Service.OpenAICompatible) {
                     OpenAICompatibleSettings(
                         baseUrl = entry.baseUrl,
@@ -699,6 +590,7 @@ private fun ConfiguredServiceCardContent(
                         onOpenAppPermissionSettings = onOpenAppPermissionSettings,
                         modelBenchmarks = modelBenchmarks,
                         serviceId = entry.service.id,
+                        optionalApiKey = entry.service.noNeedKey || entry.service.supportsOptionalApiKey,
                         openCodeTerminalThinking = openCodeTerminalThinking,
                         openCodeTerminalMode = openCodeTerminalMode,
                         onToggleOpenCodeTerminalThinking = onToggleOpenCodeTerminalThinking,
@@ -708,20 +600,22 @@ private fun ConfiguredServiceCardContent(
 
                 Spacer(Modifier.height(12.dp))
 
-                // Remove action
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextButton(
-                        onClick = onRemove,
-                        modifier = Modifier.handCursor(),
+                if (entry.service != Service.Free) {
+                    // Remove action
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = stringResource(Res.string.settings_remove_service),
-                            color = MaterialTheme.colorScheme.error,
-                        )
+                        TextButton(
+                            onClick = onRemove,
+                            modifier = Modifier.handCursor(),
+                        ) {
+                            Text(
+                                text = stringResource(Res.string.settings_remove_service),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
                 }
             }
@@ -744,6 +638,7 @@ private fun ServiceSettings(
     onOpenAppPermissionSettings: () -> Unit = {},
     modelBenchmarks: Map<String, Double> = emptyMap(),
     serviceId: String = "",
+    optionalApiKey: Boolean = false,
     openCodeTerminalThinking: Boolean = false,
     openCodeTerminalMode: String = "build",
     onToggleOpenCodeTerminalThinking: (Boolean) -> Unit = {},
@@ -752,7 +647,7 @@ private fun ServiceSettings(
     ApiKeyField(
         apiKey = apiKey,
         onChangeApiKey = onChangeApiKey,
-        labelText = stringResource(Res.string.settings_api_key_label),
+        labelText = if (optionalApiKey) "API Key（可选 / NO NEED KEY）" else stringResource(Res.string.settings_api_key_label),
         testTag = testTag,
     )
 
@@ -1467,6 +1362,30 @@ private fun ApiKeyField(
 }
 
 @Composable
+private fun BenchmarkRow(bm: ModelBenchmark) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = bm.modelLabel,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = buildString {
+                append(bm.totalScore.roundToInt())
+                if (bm.isUserScore && bm.note != null) append(" · ${bm.note}")
+            },
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = Color(benchmarkScoreColor(bm.totalScore)),
+        )
+    }
+}
+
+@Composable
 private fun ModelBenchmarkCard(
     benchmarks: ImmutableList<ModelBenchmark>,
     isRunning: Boolean,
@@ -1538,6 +1457,7 @@ private fun ModelBenchmarkCard(
                         )
                     }
                     if (benchmarks.isNotEmpty()) {
+                        var sortMode by remember { mutableStateOf(BenchmarkSortMode.AlphaAsc) }
                         Spacer(Modifier.height(10.dp))
                         HorizontalDivider(thickness = 0.5.dp)
                         if (done && summary.isNotBlank()) {
@@ -1549,33 +1469,109 @@ private fun ModelBenchmarkCard(
                             )
                             Spacer(Modifier.height(8.dp))
                         }
-                        Spacer(Modifier.height(6.dp))
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            benchmarks
-                                .sortedByDescending { it.totalScore }
-                                .forEach { bm ->
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = bm.modelLabel,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(
-                                            text = "${bm.totalScore.roundToInt()}",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(benchmarkScoreColor(bm.totalScore)),
-                                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            val isAlpha = sortMode == BenchmarkSortMode.AlphaAsc || sortMode == BenchmarkSortMode.AlphaDesc
+                            val isScore = sortMode == BenchmarkSortMode.ScoreDesc || sortMode == BenchmarkSortMode.ScoreAsc
+                            TextButton(
+                                onClick = {
+                                    sortMode = if (sortMode == BenchmarkSortMode.AlphaAsc) {
+                                        BenchmarkSortMode.AlphaDesc
+                                    } else {
+                                        BenchmarkSortMode.AlphaAsc
                                     }
-                                }
+                                },
+                                modifier = Modifier.handCursor(),
+                            ) {
+                                Text(
+                                    text = if (sortMode == BenchmarkSortMode.AlphaDesc) "字母反序" else "字母正序",
+                                    color = if (isAlpha) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            TextButton(
+                                onClick = {
+                                    sortMode = if (sortMode == BenchmarkSortMode.ScoreDesc) {
+                                        BenchmarkSortMode.ScoreAsc
+                                    } else {
+                                        BenchmarkSortMode.ScoreDesc
+                                    }
+                                },
+                                modifier = Modifier.handCursor(),
+                            ) {
+                                Text(
+                                    text = if (sortMode == BenchmarkSortMode.ScoreAsc) "分数升序" else "分数降序",
+                                    color = if (isScore) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        val zeroScores = remember(benchmarks) { benchmarks.filter { it.totalScore <= 0.0 } }
+                        val nonZero = remember(benchmarks) { benchmarks.filter { it.totalScore > 0.0 } }
+                        val grouped = remember(nonZero, sortMode) {
+                            val groups = nonZero.groupBy { it.serviceId.ifBlank { it.modelLabel.substringBefore('/') } }
+                            val sortedGroups = groups.map { (group, items) ->
+                                group to sortBenchmarks(items, sortMode)
+                            }
+                            when (sortMode) {
+                                BenchmarkSortMode.AlphaAsc -> sortedGroups.sortedBy { it.first.lowercase() }
+                                BenchmarkSortMode.AlphaDesc -> sortedGroups.sortedByDescending { it.first.lowercase() }
+                                BenchmarkSortMode.ScoreDesc -> sortedGroups.sortedByDescending { it.second.maxOfOrNull { bm -> bm.totalScore } ?: 0.0 }
+                                BenchmarkSortMode.ScoreAsc -> sortedGroups.sortedBy { it.second.maxOfOrNull { bm -> bm.totalScore } ?: 0.0 }
+                            }
+                        }
+                        val sortedZeros = remember(zeroScores, sortMode) { sortBenchmarks(zeroScores, sortMode) }
+                        val parentDividerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                        val resultScroll = rememberScrollState()
+                        Row(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .verticalScroll(resultScroll),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                            grouped.forEach { (group, items) ->
+                                Text(
+                                    text = group,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                items.forEach { bm -> BenchmarkRow(bm) }
+                                HorizontalDivider(thickness = 1.5.dp, color = parentDividerColor)
+                            }
+                            if (sortedZeros.isNotEmpty()) {
+                                Text(
+                                    text = "零分模型",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                sortedZeros.forEach { bm -> BenchmarkRow(bm) }
+                            }
+                            }
+                            VerticalScrollbarForScroll(
+                                scrollState = resultScroll,
+                                modifier = Modifier.fillMaxHeight(),
+                            )
                         }
                     }
                 }
             }
         }
     }
+}
+
+private enum class BenchmarkSortMode { AlphaAsc, AlphaDesc, ScoreDesc, ScoreAsc }
+
+private fun sortBenchmarks(list: List<ModelBenchmark>, mode: BenchmarkSortMode): List<ModelBenchmark> = when (mode) {
+    BenchmarkSortMode.AlphaAsc -> list.sortedBy { it.modelLabel.lowercase() }
+    BenchmarkSortMode.AlphaDesc -> list.sortedByDescending { it.modelLabel.lowercase() }
+    BenchmarkSortMode.ScoreDesc -> list.sortedWith(
+        compareByDescending<ModelBenchmark> { it.totalScore }.thenBy { it.modelLabel.lowercase() },
+    )
+    BenchmarkSortMode.ScoreAsc -> list.sortedWith(
+        compareBy<ModelBenchmark> { it.totalScore }.thenBy { it.modelLabel.lowercase() },
+    )
 }

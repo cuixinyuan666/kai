@@ -4,6 +4,7 @@ import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_APP_OPENS
 import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_BASE_URL_V1_MIGRATION_COMPLETE
 import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_CURRENT_SERVICE_ID
 import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_CUSTOM_MODEL_MIGRATION_COMPLETE
+import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_IMPORTED_API_SEED_COMPLETE
 import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_INSTANCE_MIGRATION_COMPLETE
 import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_MIGRATION_COMPLETE
 import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_SERVICES_MIGRATION_COMPLETE
@@ -17,6 +18,7 @@ fun AppSettings.runMigrations(legacySettings: Settings?) {
     migrateInstanceSettingsIfNeeded()
     migrateBaseUrlsToV1PathIfNeeded()
     migrateCustomModelSettingsIfNeeded()
+    seedImportedApisIfNeeded()
 }
 
 fun AppSettings.migrateFromLegacyIfNeeded(legacySettings: Settings?) {
@@ -166,3 +168,72 @@ fun AppSettings.migrateCustomModelSettingsIfNeeded() {
 
     settings.putBoolean(KEY_CUSTOM_MODEL_MIGRATION_COMPLETE, true)
 }
+
+private data class ImportedApiSeed(
+    val serviceId: String,
+    val apiKey: String = "",
+    val baseUrl: String? = null,
+    val overwriteKey: Boolean = false,
+)
+
+/**
+ * One-time seed of API sources from the user-exported FreeLLMAPI catalog.
+ * Keys that start with `freellmapi` are treated as invalid and only the source is added.
+ */
+fun AppSettings.seedImportedApisIfNeeded() {
+    if (settings.getBoolean(KEY_IMPORTED_API_SEED_COMPLETE, false)) return
+
+    val seeds = listOf(
+        ImportedApiSeed("agnes"),
+        ImportedApiSeed("ainative"),
+        ImportedApiSeed("aion"),
+        ImportedApiSeed("bazaarlink"),
+        ImportedApiSeed("cloudflare"),
+        ImportedApiSeed(
+            serviceId = "openai-compatible",
+            baseUrl = "https://apihub.agnes-ai.com/v1",
+        ),
+        ImportedApiSeed("github"),
+        ImportedApiSeed("gemini"),
+        ImportedApiSeed("huggingface"),
+        ImportedApiSeed("llm7"),
+        ImportedApiSeed("mistral"),
+        ImportedApiSeed("nara"),
+        ImportedApiSeed("nvidia"),
+        ImportedApiSeed("opencode"),
+        ImportedApiSeed("opencode-terminal"),
+        ImportedApiSeed("openrouter"),
+        ImportedApiSeed("reka"),
+        ImportedApiSeed("requesty"),
+        ImportedApiSeed("routeway"),
+        ImportedApiSeed("sealion"),
+        ImportedApiSeed("siliconflow"),
+        ImportedApiSeed("zhipu"),
+        ImportedApiSeed("sensenova"),
+    )
+
+    val instances = getConfiguredServiceInstances().toMutableList()
+    for (seed in seeds) {
+        if (Service.all.none { it.id == seed.serviceId }) continue
+        val existing = instances.find { it.serviceId == seed.serviceId }
+        val instanceId = existing?.instanceId ?: generateInstanceId(seed.serviceId)
+        if (existing == null) {
+            instances.add(ServiceInstance(instanceId = instanceId, serviceId = seed.serviceId))
+        }
+        val usableKey = seed.apiKey.takeIf { it.isNotBlank() && !it.startsWith("freellmapi") }.orEmpty()
+        if (usableKey.isNotBlank() && (seed.overwriteKey || getInstanceApiKey(instanceId).isBlank())) {
+            setInstanceApiKey(instanceId, usableKey)
+        }
+        if (!seed.baseUrl.isNullOrBlank() && getInstanceBaseUrl(instanceId).isBlank()) {
+            setInstanceBaseUrl(instanceId, ensureBaseUrlHasVersionPath(seed.baseUrl))
+        }
+        val service = Service.fromId(seed.serviceId)
+        if (getInstanceModelId(instanceId).isBlank() && !service.defaultModel.isNullOrBlank()) {
+            setInstanceModelId(instanceId, service.defaultModel)
+        }
+    }
+
+    setConfiguredServiceInstances(instances)
+    settings.putBoolean(KEY_IMPORTED_API_SEED_COMPLETE, true)
+}
+

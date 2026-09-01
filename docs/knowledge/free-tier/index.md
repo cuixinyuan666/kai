@@ -18,7 +18,7 @@ The app **never** reads this directory at runtime. No live pricing calls are mad
 
 ## Scope
 
-Only **OpenRouter** and **Ollama Cloud** are curated. Free-ness is **per service**, not global.
+**OpenRouter** and **Ollama Cloud** are curated from pricing APIs. Additionally, runtime treats **APP-FREE** and keyless providers (Kilo, OVH, Pollinations, AI Horde) as free-tier for badge purposes. OpenCode / OpenCode 终端 still use the explicit `-free` id list. Free-ness is **per service**, not global.
 
 ## Catalogs
 

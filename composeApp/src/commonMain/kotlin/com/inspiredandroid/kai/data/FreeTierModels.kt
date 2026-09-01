@@ -107,6 +107,8 @@ internal object FreeTierModels {
     )
 
     fun isFreeTier(service: Service, modelId: String): Boolean {
+        if (service == Service.Free) return true
+        if (service.noNeedKey && service !is Service.OpenAICompatible) return true
         val set = byService[service.id] ?: return false
         val lower = modelId.lowercase()
         if (lower in set) return true

@@ -246,7 +246,8 @@ fun SettingsScreenContent(
             )
 
             val settingsScrollState = rememberScrollState()
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            Row(Modifier.weight(1f).fillMaxWidth().padding(end = 12.dp)) {
+                Box(Modifier.weight(1f).fillMaxHeight()) {
                 Column(
                     Modifier.fillMaxWidth().verticalScroll(settingsScrollState),
                     horizontalAlignment = CenterHorizontally,
@@ -275,16 +276,6 @@ fun SettingsScreenContent(
                                     uiState = filteredUiState,
                                     actions = actions,
                                 )
-                            }
-
-                            SettingsTab.Collaboration -> {
-                                if (dataRepository != null) {
-                                    CollaborationSettings(dataRepository = dataRepository, services = services)
-                                }
-                            }
-
-                            SettingsTab.Integrations -> {
-                                IntegrationsContent()
                             }
 
                             SettingsTab.Tools -> {
@@ -337,9 +328,10 @@ fun SettingsScreenContent(
 
                     BottomInfo()
                 }
+                }
                 VerticalScrollbarForScroll(
                     scrollState = settingsScrollState,
-                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                    modifier = Modifier.fillMaxHeight(),
                 )
             }
         }
@@ -403,10 +395,8 @@ private fun SettingsTabSelector(
                             SettingsTab.General -> stringResource(Res.string.settings_tab_general)
                             SettingsTab.Agent -> stringResource(Res.string.settings_tab_agent)
                             SettingsTab.Services -> stringResource(Res.string.settings_tab_services)
-                            SettingsTab.Collaboration -> stringResource(Res.string.settings_tab_collaboration)
                             SettingsTab.Tools -> stringResource(Res.string.settings_tab_tools)
                             SettingsTab.Sandbox -> stringResource(Res.string.settings_tab_sandbox)
-                            SettingsTab.Integrations -> stringResource(Res.string.settings_tab_integrations)
                         },
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         color = MaterialTheme.colorScheme.primary,

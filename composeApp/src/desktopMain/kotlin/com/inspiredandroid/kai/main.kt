@@ -3,16 +3,21 @@
 
 package com.inspiredandroid.kai
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import androidx.compose.ui.window.WindowPlacement
+import androidx.compose.ui.window.WindowScope
 import androidx.compose.ui.window.rememberWindowState
+import com.inspiredandroid.kai.desktop.applyWorkingAreaMaximize
 import androidx.navigation.compose.rememberNavController
 import kai.composeapp.generated.resources.Res
 import kai.composeapp.generated.resources.logo
@@ -33,13 +38,28 @@ fun main() {
         System.setProperty("sun.java2d.uiScale", "auto")
     }
     application {
-        val windowState = rememberWindowState(size = DpSize(1280.dp, 800.dp))
+        val windowState = rememberWindowState(
+            placement = WindowPlacement.Floating,
+            size = DpSize(1280.dp, 800.dp),
+        )
         Window(
             onCloseRequest = ::exitApplication,
             state = windowState,
-            title = "Kai 9000",
+            title = "Cui",
             icon = painterResource(Res.drawable.logo),
+            undecorated = currentPlatform is Platform.Desktop.Windows,
         ) {
+            val awtWindow = (this as WindowScope).window
+            val windowDensity = LocalDensity.current.density
+            LaunchedEffect(awtWindow) {
+                applyWorkingAreaMaximize(awtWindow, windowState, windowDensity)
+            }
+            ProvideAwtWindow(awtWindow) {
+            CompositionLocalProvider(
+                LocalDesktopWindowScope provides this,
+                LocalDesktopWindowState provides windowState,
+                LocalDesktopExitApp provides { exitApplication() },
+            ) {
             // Defer TTS initialization until after the first frame
             var ttsReady by remember { mutableStateOf(false) }
             LaunchedEffect(Unit) { ttsReady = true }
@@ -54,6 +74,8 @@ fun main() {
                 navController = navController,
                 textToSpeech = textToSpeech,
             )
+            }
+            }
         }
     }
 }

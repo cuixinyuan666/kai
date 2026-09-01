@@ -58,6 +58,8 @@ class SqlConversationPersistence(
                 title = row.title,
                 type = row.type,
                 shellTranscript = decodeTranscript(row.shellTranscriptJson),
+                parentId = row.parentId,
+                metadataJson = row.metadataJson,
             )
         }
     }
@@ -116,6 +118,8 @@ class SqlConversationPersistence(
             createdAt = conversation.createdAt,
             updatedAt = conversation.updatedAt,
             shellTranscriptJson = ConversationJson.encodeToString(conversation.shellTranscript),
+            parentId = conversation.parentId,
+            metadataJson = conversation.metadataJson,
         )
         conversation.messages.forEachIndexed { index, message ->
             queries.insertMessage(

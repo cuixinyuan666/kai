@@ -3,7 +3,6 @@ package com.inspiredandroid.kai.data
 import com.inspiredandroid.kai.defaultUiScale
 import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.collaboration.CollaborationConfig
-import com.inspiredandroid.kai.data.collaboration.ModelScore
 import com.inspiredandroid.kai.linux.LinuxDistro
 import com.russhwolf.settings.Settings
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +33,8 @@ enum class ThemeMode {
     Light,
     Dark,
     OledBlack,
+  /** 护眼：暖色低蓝光背景 */
+    EyeCare,
 }
 
 /**
@@ -296,6 +297,12 @@ class AppSettings(internal val settings: Settings) {
     fun setThemeMode(mode: ThemeMode) {
         settings.putString(KEY_THEME_MODE, mode.name)
         _themeModeFlow.value = mode
+    }
+
+    fun getSettingsTab(): String? = settings.getStringOrNull(KEY_SETTINGS_TAB)
+
+    fun setSettingsTab(tab: String) {
+        settings.putString(KEY_SETTINGS_TAB, tab)
     }
 
     private fun loadInitialThemeMode(): ThemeMode {
@@ -576,13 +583,6 @@ class AppSettings(internal val settings: Settings) {
     fun setCollaborationConfig(config: CollaborationConfig) {
         settings.putString(KEY_COLLABORATION_CONFIG, collaborationJson.encodeToString(CollaborationConfig.serializer(), config))
     }
-
-    /** 更新单个模型评分（按 instanceId+modelId 去重合并）。 */
-    fun upsertModelScore(score: ModelScore) {
-        val current = getCollaborationConfig()
-        val others = current.scores.filter { it.instanceId != score.instanceId || it.modelId != score.modelId }
-        setCollaborationConfig(current.copy(scores = others + score))
-    }
     // endregion
 
     // region Model benchmark (一键测试所有大模型)
@@ -597,6 +597,10 @@ class AppSettings(internal val settings: Settings) {
 
     fun upsertModelBenchmark(benchmark: ModelBenchmark) {
         val current = getModelBenchmarks()
+        val existing = current.find { it.modelKey == benchmark.modelKey }
+        if (!benchmark.isUserScore && existing?.isUserScore == true) {
+            return
+        }
         val others = current.filter { it.modelKey != benchmark.modelKey }
         settings.putString(
             KEY_MODEL_BENCHMARKS,
@@ -605,7 +609,15 @@ class AppSettings(internal val settings: Settings) {
     }
 
     fun clearModelBenchmarks() {
-        settings.remove(KEY_MODEL_BENCHMARKS)
+        val userOnly = getModelBenchmarks().filter { it.isUserScore }
+        if (userOnly.isEmpty()) {
+            settings.remove(KEY_MODEL_BENCHMARKS)
+        } else {
+            settings.putString(
+                KEY_MODEL_BENCHMARKS,
+                modelBenchmarkJson.encodeToString(ListSerializer(ModelBenchmark.serializer()), userOnly),
+            )
+        }
     }
     // endregion
 
@@ -652,6 +664,7 @@ class AppSettings(internal val settings: Settings) {
         const val KEY_DYNAMIC_UI_ENABLED = "dynamic_ui_enabled"
         const val KEY_OLED_MODE_ENABLED = "oled_mode_enabled"
         const val KEY_THEME_MODE = "theme_mode"
+        const val KEY_SETTINGS_TAB = "settings_tab"
         const val KEY_DAEMON_ENABLED = "daemon_enabled"
         const val KEY_HEARTBEAT_CONFIG = "heartbeat_config"
         const val KEY_HEARTBEAT_PROMPT = "heartbeat_prompt"
@@ -676,6 +689,7 @@ class AppSettings(internal val settings: Settings) {
         const val KEY_NOTIFICATIONS_STORE = "notifications_store"
         const val KEY_NOTIFICATIONS_SYNC_STATE = "notifications_sync_state"
         const val KEY_CONFIGURED_SERVICES = "configured_services"
+        const val KEY_SERVICE_DISPLAY_ORDER = "service_display_order"
         const val KEY_FREE_FALLBACK_ENABLED = "free_fallback_enabled"
         const val KEY_FREE_MODE = "free_mode"
         const val KEY_FREE_SERVICE_PRIMARY = "free_service_primary"
@@ -685,6 +699,7 @@ class AppSettings(internal val settings: Settings) {
         const val KEY_INSTANCE_MIGRATION_COMPLETE = "instance_migration_complete_v1"
         const val KEY_BASE_URL_V1_MIGRATION_COMPLETE = "base_url_v1_migration_complete"
         const val KEY_CUSTOM_MODEL_MIGRATION_COMPLETE = "custom_model_migration_complete_v1"
+        const val KEY_IMPORTED_API_SEED_COMPLETE = "imported_api_seed_complete_v2"
 
         const val KEY_SPLINTERLANDS_ENABLED = "splinterlands_enabled"
         const val KEY_SPLINTERLANDS_ACCOUNT = "splinterlands_account"

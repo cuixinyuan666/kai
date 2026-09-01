@@ -1,3 +1,86 @@
+## v3.5.8 — 2026-08-30
+
+### Fixes
+- Chat history: collaboration and war tasks open correctly from the folder tree (legacy rows stored as generic chat no longer show a blank screen)
+- History sheet reopens at the task level after closing a collaboration model view
+
+## v3.5.7 — 2026-08-30
+
+### Fixes
+- Chat history: single-mode conversations appear at the root of the history sheet again after sending a message (no need to open the「单一模式」folder)
+- Conversations are persisted when the user sends a message, not only after the assistant reply
+
+## v3.5.6 — 2026-08-30
+
+### Fixes
+- Collaboration mode: clear stuck loading when browsing chat history folders; reset history tree to root from top bar
+- War mode: auto-open result view with progress on start; clear loading state on errors/cancel; fix「查看各模型对话」navigation
+
+## v3.5.5 — 2026-08-29
+
+### Features
+- **战争模式**：第 1 轮所有达标模型并行作答 → 总结模型提取相同点与分歧方面 → 第 2 轮各模型对分歧投票；任务结果页展示「同意 X/Y · 不同意 Z/Y」
+
+## v3.5.4 — 2026-08-29
+
+### Fixes
+- ChatViewModel no longer crashes when loading dual-mode folder conversations (legacy rows without folder metadata)
+
+## v3.5.3 — 2026-08-27
+
+### Changes
+- Windows release bundles Vosk Chinese and English speech models in the install package (no first-run download)
+
+## v3.5.2 — 2026-08-27
+
+### Fixes
+- Settings: APP-FREE in same column as other parent models, all above model test card; APP-FREE included in benchmark queue
+- Collaboration button turns light green when wizard is open; level-3 back button visible in dark mode
+- Level-3 score slider auto-saves (removed save button); chat send button aligned with left icons
+- Windows title bar shows "Cui" with theme-aligned caption color
+- Windows speech-to-text: Vosk offline recognition for Chinese and English (downloads small models on first use)
+
+## v3.5.1 — 2026-08-27
+
+### Fixes
+- Windows title bar follows app theme (dark mode + caption color); collaboration button gray when idle
+- Collaboration model score slider uses model-test benchmarks instead of default 50
+- Cui logo: dotless i with animated dot only
+- Settings: removed Integrations tab; APP-FREE in model list above model test card
+- Shell command tool enabled by default on desktop; collaboration wizard supports attachments, folders, speech, prompt optimize
+- Windows speech-to-text UTF-8 output fix
+
+## v3.5.0 — 2026-08-27
+
+### Features
+- UI polish: Cui branding, eye-care theme, collaboration button in top bar, level-3 model navigation arrows
+- Speech-to-text (Windows desktop) and prompt optimization using top-scored models
+- Chat history folder alphabetical sort with reverse toggle; task-level delete/retry
+- Model test: user collaboration scores sync with note; grouped display with zero-score section
+- APP-FREE service card; settings tab persistence; default maximized window on desktop
+
+### Changes
+- Removed sponsor/business sections, collaboration settings tab, and integration request card
+- Splinterlands description translated to Chinese
+
+## v3.4.1 — 2026-08-27
+
+### Fixes
+- SQLite migration: use `CREATE TABLE IF NOT EXISTS` so upgrading from v3.4.0 does not crash on existing conversation databases (fixes ChatViewModel / Koin startup failure)
+
+## v3.4.0 — 2026-08-27
+
+### Features
+- Collaboration mode wizard: question → score threshold → run parameters → start
+- Each eligible model runs as an isolated single-mode pipeline (tools, memory, plan)
+- Chat history tree: **单一模式** / **协作模式** → task folders (`2026-02-20-任务1`) → per-model folders (`opencode-hy3`)
+- WeChat-style per-model view with copy, retry, and score slider; status colors for running / done / failed
+- Folder-level copy buttons with formatted traversal text
+
+### Changes
+- Removed collaboration overview panel, custom system prompt, and settings-page model scoring
+- GitHub Release publishes **Windows portable zip only**
+
 ## v3.3.1 — 2026-08-27
 
 ### Fixes

@@ -4,6 +4,10 @@ package com.inspiredandroid.kai
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -40,8 +44,10 @@ import com.inspiredandroid.kai.tools.AppPermission
 import com.inspiredandroid.kai.tools.PermissionController
 import com.inspiredandroid.kai.tools.SetupPermissionHandler
 import com.inspiredandroid.kai.ui.DarkColorScheme
+import com.inspiredandroid.kai.ui.EyeCareColorScheme
 import com.inspiredandroid.kai.ui.LightColorScheme
 import com.inspiredandroid.kai.ui.Theme
+import com.inspiredandroid.kai.SyncPlatformWindowTheme
 import com.inspiredandroid.kai.ui.chat.ChatScreen
 import com.inspiredandroid.kai.ui.chat.ChatViewModel
 import com.inspiredandroid.kai.ui.components.FullScreenImageHost
@@ -142,8 +148,10 @@ private fun AppContent(
 
     val uiScale by appSettings.uiScaleFlow.collectAsStateWithLifecycle()
     val defaultDensity = LocalDensity.current
-    val scaledDensity = remember(defaultDensity, uiScale) {
-        Density(defaultDensity.density * uiScale, defaultDensity.fontScale)
+    val frozenBaseDensity = remember { defaultDensity.density }
+    val frozenFontScale = remember { defaultDensity.fontScale }
+    val scaledDensity = remember(uiScale) {
+        Density(frozenBaseDensity * uiScale, frozenFontScale)
     }
 
     val themeMode by appSettings.themeModeFlow.collectAsStateWithLifecycle()
@@ -153,6 +161,7 @@ private fun AppContent(
         ThemeMode.Light -> lightColorScheme
         ThemeMode.Dark -> darkColorScheme
         ThemeMode.OledBlack -> darkColorScheme.withBlackBackground()
+        ThemeMode.EyeCare -> EyeCareColorScheme
     }
 
     val sandboxController = koinInject<SandboxController>()
@@ -163,6 +172,10 @@ private fun AppContent(
         LocalUriHandler provides sandboxAwareUriHandler,
     ) {
         Theme(colorScheme = effectiveColorScheme) {
+            Column(Modifier.fillMaxSize().background(effectiveColorScheme.background)) {
+                PlatformTitleBar()
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+            SyncPlatformWindowTheme()
             FullScreenImageHost {
                 val chatViewModel: ChatViewModel = koinViewModel()
                 val showTabBar = currentPlatform !is Platform.Mobile
@@ -235,6 +248,8 @@ private fun AppContent(
                             navigationTabBar = if (showTabBar) navigationTabBar else null,
                         )
                     }
+                }
+            }
                 }
             }
         }

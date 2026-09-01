@@ -46,6 +46,7 @@ class ToolExecutor(
             return """{"success": false, "error": "Failed to parse arguments: ${e.message}"}"""
         }
 
+
         return try {
             val result = withTimeout(tool.timeout) {
                 if (conversationId != null) {
@@ -68,7 +69,8 @@ class ToolExecutor(
 
                 else -> """{"result": "$result"}"""
             }
-            truncateResult(resultString)
+            val truncated = truncateResult(resultString)
+            truncated
         } catch (e: TimeoutCancellationException) {
             """{"success": false, "error": "Tool '$name' timed out after ${tool.timeout}"}"""
         } catch (e: CancellationException) {

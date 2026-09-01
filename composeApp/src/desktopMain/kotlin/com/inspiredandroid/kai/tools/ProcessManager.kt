@@ -35,7 +35,7 @@ class ProcessManager {
 
         val isWindows = System.getProperty("os.name").lowercase().contains("win")
         val processBuilder = if (isWindows) {
-            ProcessBuilder("cmd", "/c", command)
+            BundledPwsh.processBuilder(command)
         } else {
             ProcessBuilder("sh", "-c", command)
         }

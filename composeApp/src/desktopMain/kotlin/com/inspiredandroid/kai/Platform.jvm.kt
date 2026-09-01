@@ -156,7 +156,7 @@ actual fun getAvailableTools(): List<Tool> {
         emailStore = emailStore,
     ) {
         // manage_process rides the shell switch — it only inspects processes that tool started.
-        if (appSettings.isToolEnabled(ShellCommandTool.schema.name, defaultEnabled = false)) {
+        if (appSettings.isToolEnabled(ShellCommandTool.schema.name, defaultEnabled = true)) {
             add(ShellCommandTool)
             add(ProcessManagerTool)
         }

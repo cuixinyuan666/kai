@@ -86,7 +86,7 @@
     <string name="settings_daemon_mode">后台模式</string>
     <string name="settings_daemon_mode_description">让 Kai 9000 在后台持续运行，以便即使应用不在前台时计划任务也能执行。</string>
     <string name="settings_scheduled_tasks">计划任务</string>
-    <string name="settings_scheduled_tasks_description">AI 安排的未来执行任务。让 AI 提醒您或稍后运行某些操作来创建计划任务。</string>
+    <string name="settings_scheduled_tasks_description">计划任务让 Kai 在指定时间或每次心跳时自动执行您编写的提示词（例如定时总结、提醒或批处理）。在下方创建任务后，可在任务详情中查看执行记录；右侧刷新按钮可立即触发一次心跳自检。</string>
     <string name="settings_scheduled_tasks_cancel">取消任务</string>
     <string name="settings_soul_reset">重置</string>
     <string name="settings_soul_reset_confirm">这将把灵魂重置为默认系统提示。您确定吗？</string>
@@ -126,7 +126,7 @@
     <string name="settings_heartbeat">心跳</string>
     <string name="settings_heartbeat_default_prompt">[HEARTBEAT] 这是一次自动自检。检查你的记忆和待处理任务。如果一切正常且无需关注，请准确回复：HEARTBEAT_OK
 如果有需要关注的事项（过时的记忆、到期的任务、用户跟进），请处理。</string>
-    <string name="settings_heartbeat_description">定期自检，允许AI在无用户输入的情况下检查记忆和任务。在活跃时段每 %1$d 分钟运行一次。</string>
+    <string name="settings_heartbeat_description">心跳在活跃时段每 %1$d 分钟自动运行下方提示词，检查记忆、待办邮件/短信并决定是否通知您。右侧「触发心跳」可立即测试；若失败，请在上方选择已配置且可用的模型服务。</string>
     <string name="settings_heartbeat_prompt_label">心跳提示词</string>
     <string name="settings_heartbeat_recent">最近活动</string>
     <string name="settings_heartbeat_refresh">触发心跳</string>

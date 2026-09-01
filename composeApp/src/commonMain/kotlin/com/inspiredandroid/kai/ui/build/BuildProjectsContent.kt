@@ -7,12 +7,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -46,6 +48,7 @@ import com.inspiredandroid.kai.build.BuildSystemInfo
 import com.inspiredandroid.kai.build.KaiBuildState
 import com.inspiredandroid.kai.formatFileSize
 import com.inspiredandroid.kai.ui.components.KaiChip
+import com.inspiredandroid.kai.ui.components.VerticalScrollbarForList
 import com.inspiredandroid.kai.ui.handCursor
 import com.inspiredandroid.kai.ui.settings.SettingsCard
 import kai.composeapp.generated.resources.Res
@@ -110,8 +113,11 @@ internal fun BuildProjectsContent(
         state.sessions.groupingBy { it.project }.eachCount()
     }
 
+    val projectListState = rememberLazyListState()
+    Box(modifier = modifier.fillMaxSize()) {
     LazyColumn(
-        modifier = modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize(),
+        state = projectListState,
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -220,6 +226,11 @@ internal fun BuildProjectsContent(
                 onUninstall = { showUninstall = true },
             )
         }
+    }
+    VerticalScrollbarForList(
+        listState = projectListState,
+        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+    )
     }
 
     renaming?.let { project ->

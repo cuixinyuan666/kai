@@ -75,14 +75,19 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.inspiredandroid.kai.BackIcon
 import com.inspiredandroid.kai.TerminalLine
 import com.inspiredandroid.kai.data.Service
+import com.inspiredandroid.kai.data.collaboration.ChatMode
+import com.inspiredandroid.kai.data.metadata
 import com.inspiredandroid.kai.data.supportsAgenticFlows
+import com.inspiredandroid.kai.data.war.decodeWarTaskResult
 import com.inspiredandroid.kai.getBackgroundDispatcher
 import com.inspiredandroid.kai.onDragAndDropEventDropped
+import com.inspiredandroid.kai.speech.SpeechLanguage
 import com.inspiredandroid.kai.ui.build.KaiBuildScreen
 import com.inspiredandroid.kai.ui.chat.composables.BotMessage
-import com.inspiredandroid.kai.ui.chat.composables.ChatHistorySheet
+import com.inspiredandroid.kai.ui.chat.composables.ChatHistoryTreeSheet
+import com.inspiredandroid.kai.ui.chat.composables.CollaborationModelChatView
 import com.inspiredandroid.kai.ui.chat.composables.CircleIconButton
-import com.inspiredandroid.kai.ui.chat.composables.CollaborationPanel
+import com.inspiredandroid.kai.ui.chat.composables.CollaborationWizardSheet
 import com.inspiredandroid.kai.ui.chat.composables.EmptyState
 import com.inspiredandroid.kai.ui.chat.composables.ErrorMessage
 import com.inspiredandroid.kai.ui.chat.composables.FreeProviderSuggestionsPanel
@@ -93,10 +98,14 @@ import com.inspiredandroid.kai.ui.chat.composables.ServiceSelector
 import com.inspiredandroid.kai.ui.chat.composables.TopBar
 import com.inspiredandroid.kai.ui.chat.composables.TrailingIcon
 import com.inspiredandroid.kai.ui.chat.composables.UserMessage
+import com.inspiredandroid.kai.ui.chat.composables.WarResultView
+import com.inspiredandroid.kai.ui.chat.composables.WarWizardSheet
 import com.inspiredandroid.kai.ui.chat.composables.WaitingResponseRow
 import com.inspiredandroid.kai.ui.chat.composables.uiErrorText
 import com.inspiredandroid.kai.ui.components.LogoAnimation
+import com.inspiredandroid.kai.ui.rememberCopyToClipboard
 import com.inspiredandroid.kai.ui.components.VerticalScrollbarForList
+import com.inspiredandroid.kai.ui.components.VerticalScrollbarForScroll
 import com.inspiredandroid.kai.ui.components.animatedGradientBorder
 import com.inspiredandroid.kai.ui.dynamicui.FrozenSubmission
 import com.inspiredandroid.kai.ui.dynamicui.KaiUiRenderer
@@ -291,9 +300,7 @@ private fun InteractiveModeScreen(
                         availableServices = interactiveServices,
                         onSelectService = uiState.actions.selectService,
                         onSelectModel = uiState.actions.selectModel,
-                        chatMode = uiState.chatMode,
-                        onToggleChatMode = uiState.actions.toggleChatMode,
-                        onStartCollaboration = uiState.actions.startCollaboration,
+                        onOpenCollaborationWizard = uiState.actions.openCollaborationWizard,
                         installedSkills = uiState.installedSkills,
                     )
                 }
@@ -438,11 +445,13 @@ private fun InteractiveModeContent(
                 val uiBlocks = blocks.filterIsInstance<KaiUiBlock>()
 
                 if (uiBlocks.isNotEmpty()) {
+                    val interactiveScroll = rememberScrollState()
+                    Box(Modifier.fillMaxSize()) {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp + bottomPadding),
+                            .verticalScroll(interactiveScroll)
+                            .padding(start = 12.dp, end = 24.dp, top = 8.dp, bottom = 8.dp + bottomPadding),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         for (block in uiBlocks) {
@@ -455,6 +464,11 @@ private fun InteractiveModeContent(
                                 wrapInCard = false,
                             )
                         }
+                    }
+                    VerticalScrollbarForScroll(
+                        scrollState = interactiveScroll,
+                        modifier = Modifier.align(CenterEnd).fillMaxHeight(),
+                    )
                     }
                 } else if (uiState.error == null) {
                     // AI responded with no valid kai-ui AND there's no API error underneath —
@@ -504,13 +518,35 @@ private fun ChatModeScreen(
     previewSandboxLines: ImmutableList<TerminalLine> = persistentListOf(),
 ) {
     var showHistorySheet by remember { mutableStateOf(false) }
+    val speechToText = remember { com.inspiredandroid.kai.speech.createSpeechToText() }
+    var isSpeechListening by remember { mutableStateOf(false) }
+    var sttLanguage by rememberSaveable { mutableStateOf("zh") }
+    val componentScope = rememberCoroutineScope()
     var isSandboxOpen by rememberSaveable { mutableStateOf(initialSandboxOpen) }
     // Hoisted here so the draft survives toggling the sandbox/terminal view, which
     // removes QuestionInput from composition and would otherwise drop the text.
     var questionInputText by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
+    val copyToClipboard = rememberCopyToClipboard()
     val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(uiState.pendingCopyText) {
+        val text = uiState.pendingCopyText
+        if (text != null) {
+            copyToClipboard(text)
+            uiState.actions.clearPendingCopyText()
+        }
+    }
+    LaunchedEffect(uiState.showHistoryTree) {
+        showHistorySheet = uiState.showHistoryTree
+    }
+    LaunchedEffect(uiState.pendingPromptText) {
+        val text = uiState.pendingPromptText
+        if (text != null) {
+            questionInputText = TextFieldValue(text)
+            uiState.actions.clearPendingPromptText()
+        }
+    }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // When the active conversation changes (e.g. user starts a new chat from the
@@ -558,8 +594,15 @@ private fun ChatModeScreen(
                 onToggleSandbox = { isSandboxOpen = !isSandboxOpen },
                 onShowHistory = {
                     keyboardController?.hide()
-                    showHistorySheet = true
+                    uiState.actions.openHistoryTreeAtRoot()
                 },
+                chatMode = uiState.chatMode,
+                isCollaborating = uiState.isCollaborating,
+                showCollaborationWizard = uiState.showCollaborationWizard,
+                onOpenCollaborationWizard = uiState.actions.openCollaborationWizard,
+                isWarRunning = uiState.isWarRunning,
+                showWarWizard = uiState.showWarWizard,
+                onOpenWarWizard = uiState.actions.openWarWizard,
                 navigationTabBar = navigationTabBar,
             )
 
@@ -932,9 +975,7 @@ private fun ChatModeScreen(
                 }
             }
 
-            if (!isSandboxOpen) {
-                CollaborationPanel(uiState = uiState)
-
+            if (!isSandboxOpen && uiState.collaborationModelViewId == null && uiState.warResultViewTaskId == null) {
                 QuestionInput(
                     files = uiState.files,
                     addFile = uiState.actions.addFile,
@@ -943,15 +984,47 @@ private fun ChatModeScreen(
                     supportedFileExtensions = uiState.supportedFileExtensions,
                     textState = questionInputText,
                     onTextStateChange = { questionInputText = it },
-                    isLoading = uiState.isLoading,
+                    isLoading = uiState.isLoading || uiState.isCollaborating || uiState.isWarRunning,
                     cancel = uiState.actions.cancel,
                     availableServices = uiState.availableServices,
                     onSelectService = uiState.actions.selectService,
                     onSelectModel = uiState.actions.selectModel,
                     modelBenchmarks = uiState.modelBenchmarks,
                     chatMode = uiState.chatMode,
-                    onToggleChatMode = uiState.actions.toggleChatMode,
-                    onStartCollaboration = uiState.actions.startCollaboration,
+                    onOpenCollaborationWizard = uiState.actions.openCollaborationWizard,
+                    onOptimizePrompt = { uiState.actions.optimizePrompt(questionInputText.text) },
+                    isOptimizingPrompt = uiState.isOptimizingPrompt,
+                    speechSupported = speechToText?.isSupported == true,
+                    isSpeechListening = isSpeechListening,
+                    sttLanguage = sttLanguage,
+                    onCycleSttLanguage = { sttLanguage = SpeechLanguage.cycle(sttLanguage) },
+                    showSendButton = uiState.chatMode == ChatMode.SINGLE &&
+                        !uiState.showCollaborationWizard &&
+                        !uiState.showWarWizard,
+                    onToggleSpeechInput = {
+                        val stt = speechToText
+                        if (stt != null) {
+                            componentScope.launch {
+                                if (isSpeechListening) {
+                                    isSpeechListening = false
+                                    stt.stopListening().onSuccess { text ->
+                                        if (text.isNotBlank()) {
+                                            questionInputText = TextFieldValue(
+                                                questionInputText.text + text,
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    isSpeechListening = true
+                                    val lang = SpeechLanguage.resolve(questionInputText.text, sttLanguage)
+                                    stt.startListening(lang).onFailure {
+                                        isSpeechListening = false
+                                        snackbarHostState.showSnackbar("无法启动语音识别")
+                                    }
+                                }
+                            }
+                        }
+                    },
                     installedSkills = uiState.installedSkills,
                 )
             }
@@ -962,16 +1035,120 @@ private fun ChatModeScreen(
         ) { data ->
             Snackbar(snackbarData = data)
         }
+
+        val modelViewId = uiState.collaborationModelViewId
+        val warTaskId = uiState.warResultViewTaskId
+        if (warTaskId != null) {
+            val warResult = uiState.folderConversations
+                .find { it.id == warTaskId }
+                ?.metadata()
+                ?.warResultJson
+                ?.let { decodeWarTaskResult(it) }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+            ) {
+                WarResultView(
+                    result = warResult,
+                    warEvents = uiState.warEvents,
+                    isRunning = uiState.isWarRunning,
+                    actions = uiState.actions,
+                    onBack = uiState.actions.closeWarResultView,
+                    onCopy = uiState.actions.copyPlainText,
+                    onOpenModelFolder = {
+                        uiState.actions.openWarTaskModels(warTaskId)
+                    },
+                )
+            }
+        }
+        if (modelViewId != null) {
+            val modelConversation = uiState.folderConversations.find { it.id == modelViewId }
+            if (modelConversation != null) {
+                val siblings = uiState.folderConversations
+                    .filter {
+                        it.parentId == modelConversation.parentId &&
+                            (it.type == com.inspiredandroid.kai.data.Conversation.TYPE_COLLABORATION_MODEL ||
+                                it.type == com.inspiredandroid.kai.data.Conversation.TYPE_WAR_MODEL)
+                    }
+                    .sortedBy { it.title.lowercase() }
+                val index = siblings.indexOfFirst { it.id == modelViewId }
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background),
+                ) {
+                    CollaborationModelChatView(
+                        conversation = modelConversation,
+                        actions = uiState.actions,
+                        isLoading = uiState.isCollaborating || uiState.isWarRunning,
+                        onBack = uiState.actions.closeCollaborationModelView,
+                        hasPrevModel = index > 0,
+                        hasNextModel = index >= 0 && index < siblings.lastIndex,
+                        onPrevModel = { uiState.actions.navigateCollaborationModel(-1) },
+                        onNextModel = { uiState.actions.navigateCollaborationModel(1) },
+                        modelBenchmarks = uiState.modelBenchmarks,
+                        serviceIdForModel = uiState.availableServices
+                            .find { it.instanceId == modelConversation.metadata().instanceId }
+                            ?.serviceId,
+                        highlightMessageId = uiState.collaborationHighlightMessageId,
+                    )
+                }
+            }
+        }
     }
 
     if (showHistorySheet) {
-        ChatHistorySheet(
-            conversations = filteredConversations,
-            currentConversationId = uiState.currentConversationId,
-            pendingConversationDeletion = uiState.pendingConversationDeletion,
+        ChatHistoryTreeSheet(
+            conversations = uiState.folderConversations,
+            treeParentId = uiState.historyTreeParentId,
             actions = uiState.actions,
-            onDismiss = { showHistorySheet = false },
-            onConversationSelected = { isSandboxOpen = false },
+            onDismiss = {
+                uiState.actions.closeHistoryTreeSheet()
+            },
+            onOpenModelView = { id ->
+                uiState.actions.openCollaborationModelView(id)
+            },
+            onOpenWarResult = { taskId ->
+                uiState.actions.openWarResultView(taskId)
+            },
+            onCopy = { id, level -> uiState.actions.copyConversationBranch(id, level) },
+        )
+    }
+
+    if (uiState.showCollaborationWizard) {
+        CollaborationWizardSheet(
+            defaultConfig = uiState.collaborationConfig,
+            supportedFileExtensions = uiState.supportedFileExtensions,
+            speechSupported = speechToText?.isSupported == true,
+            isOptimizingPrompt = uiState.isOptimizingPrompt,
+            pendingPromptText = uiState.pendingPromptText,
+            onOptimizePrompt = { uiState.actions.optimizePrompt(it) },
+            onPendingPromptConsumed = uiState.actions.clearPendingPromptText,
+            onDismiss = uiState.actions.dismissCollaborationWizard,
+            onStart = uiState.actions.startCollaborationTask,
+            speechToText = speechToText,
+            sttLanguage = sttLanguage,
+            onCycleSttLanguage = { sttLanguage = SpeechLanguage.cycle(sttLanguage) },
+        )
+    }
+
+    if (uiState.showWarWizard) {
+        WarWizardSheet(
+            defaultConfig = uiState.collaborationConfig,
+            supportedFileExtensions = uiState.supportedFileExtensions,
+            speechSupported = speechToText?.isSupported == true,
+            isOptimizingPrompt = uiState.isOptimizingPrompt,
+            pendingPromptText = uiState.pendingPromptText,
+            availableServices = uiState.availableServices,
+            modelBenchmarks = uiState.modelBenchmarks,
+            onOptimizePrompt = { uiState.actions.optimizePrompt(it) },
+            onPendingPromptConsumed = uiState.actions.clearPendingPromptText,
+            onDismiss = uiState.actions.dismissWarWizard,
+            onStart = uiState.actions.startWarTask,
+            speechToText = speechToText,
+            sttLanguage = sttLanguage,
+            onCycleSttLanguage = { sttLanguage = SpeechLanguage.cycle(sttLanguage) },
         )
     }
 }

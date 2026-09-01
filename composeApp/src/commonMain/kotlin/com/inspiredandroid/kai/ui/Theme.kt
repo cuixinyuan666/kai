@@ -50,16 +50,36 @@ fun Modifier.handCursor() = pointerHoverIcon(PointerIcon.Hand, overrideDescendan
 val DarkColorScheme = darkColorScheme(
     primary = Color(0xFFBB86FC),
     onPrimary = Color(0xFF000000),
+    primaryContainer = Color(0xFF4A148C),
+    onPrimaryContainer = Color(0xFFE1BEE7),
+    secondaryContainer = Color(0xFF4A4458),
+    onSecondaryContainer = Color(0xFFE8DEF8),
     surface = Color(0xFF1E1E1E),
     background = Color(0xFF121212),
     onBackground = Color(0xFFFFFFFF),
     onSurface = Color(0xFFFFFFFF),
+    onSurfaceVariant = Color(0xFFE6E1E5),
+    surfaceVariant = Color(0xFF2C2C2C),
+    surfaceContainerLowest = Color(0xFF0F0F0F),
+    surfaceContainerLow = Color(0xFF1C1B1F),
+    surfaceContainer = Color(0xFF211F26),
+    surfaceContainerHigh = Color(0xFF2B2930),
+    surfaceContainerHighest = Color(0xFF36343B),
+    outline = Color(0xFF938F99),
+    outlineVariant = Color(0xFF49454F),
+    inverseSurface = Color(0xFFE6E1E5),
+    inverseOnSurface = Color(0xFF313033),
+    error = Color(0xFFF2B8B5),
+    onError = Color(0xFF601410),
 )
 
 fun ColorScheme.withBlackBackground(): ColorScheme = copy(
     background = Color.Black,
     surface = Color.Black,
     surfaceContainerLowest = Color.Black,
+    onBackground = Color.White,
+    onSurface = Color.White,
+    onSurfaceVariant = Color(0xFFE6E1E5),
 )
 
 val ColorScheme.isOledFlavor: Boolean get() = background == Color.Black
@@ -105,6 +125,31 @@ val LightColorScheme = lightColorScheme(
     background = Color(0xFFFFFFFF),
     onBackground = Color(0xFF000000),
     onSurface = Color(0xFF000000),
+    onSurfaceVariant = Color(0xFF49454F),
+    surfaceVariant = Color(0xFFE7E0EC),
+    outline = Color(0xFF79747E),
+    outlineVariant = Color(0xFFCAC4D0),
+    inverseSurface = Color(0xFF313033),
+    inverseOnSurface = Color(0xFFF4EFF4),
+)
+
+/** 护眼模式：暖色背景、降低对比刺眼感 */
+val EyeCareColorScheme = lightColorScheme(
+    primary = Color(0xFF6B8E23),
+    onPrimary = Color(0xFFFFFFFF),
+    surface = Color(0xFFF0E6D2),
+    background = Color(0xFFF5F0E1),
+    onBackground = Color(0xFF3D3A33),
+    onSurface = Color(0xFF3D3A33),
+    onSurfaceVariant = Color(0xFF5C564C),
+    surfaceVariant = Color(0xFFE8DFC8),
+    outline = Color(0xFF8A8070),
+    outlineVariant = Color(0xFFC9BFA8),
+    surfaceContainerHigh = Color(0xFFE8DFC8),
+    primaryContainer = Color(0xFFD4E4C4),
+    onPrimaryContainer = Color(0xFF2E4A1E),
+    inverseSurface = Color(0xFF3D3A33),
+    inverseOnSurface = Color(0xFFF5F0E1),
 )
 
 @Composable

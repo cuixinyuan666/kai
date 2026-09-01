@@ -45,6 +45,7 @@ import com.inspiredandroid.kai.formatContextWindow
 import com.inspiredandroid.kai.formatReleaseDate
 import com.inspiredandroid.kai.ui.KaiOutlinedTextField
 import com.inspiredandroid.kai.ui.components.KaiSearchField
+import com.inspiredandroid.kai.ui.components.ModelPairChips
 import com.inspiredandroid.kai.ui.components.VerticalScrollbarForList
 import com.inspiredandroid.kai.ui.handCursor
 import kai.composeapp.generated.resources.Res
@@ -84,7 +85,7 @@ internal fun ModelSelection(
         ) {
             KaiOutlinedTextField(
                 modifier = Modifier.fillMaxWidth(),
-                value = currentSelectedModel?.let { it.displayName ?: it.id } ?: "",
+                value = currentSelectedModel?.let { " " } ?: "",
                 onValueChange = {},
                 readOnly = true,
                 label = {
@@ -102,6 +103,21 @@ internal fun ModelSelection(
                     )
                 },
             )
+            currentSelectedModel?.let { selected ->
+                val child = selected.displayName ?: selected.id
+                Row(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .padding(start = 16.dp, end = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ModelPairChips(
+                        parent = serviceName.ifBlank { child },
+                        child = child.takeIf { serviceName.isNotBlank() && it != serviceName },
+                        compact = true,
+                    )
+                }
+            }
             // Transparent overlay to capture clicks reliably on all platforms
             Box(
                 modifier = Modifier
@@ -214,8 +230,11 @@ internal fun ModelSelection(
                             items(sortedModels, key = { it.id }) { model ->
                                 ModelCard(
                                     model = model,
+                                    parentName = serviceName,
                                     isSelected = currentSelectedModel?.id == model.id,
-                                    showCrown = (serviceName == "opencode api" || serviceName == "opencode terminal") && model.id.endsWith("-free"),
+                                    showCrown = (serviceName == "OpenCode API" || serviceName == "OpenCode 终端" ||
+                                        serviceName == "opencode api" || serviceName == "opencode terminal") &&
+                                        (model.id.endsWith("-free") || model.isFreeTier),
                                     score = if (serviceId.isBlank()) modelBenchmarks[model.id] else modelBenchmarks["$serviceId::${model.id}"],
                                     onClick = {
                                         onClick(model.id)
@@ -248,6 +267,7 @@ private enum class ModelSortOption(
 @Composable
 private fun ModelCard(
     model: SettingsModel,
+    parentName: String,
     isSelected: Boolean,
     showCrown: Boolean = false,
     score: Double? = null,
@@ -261,11 +281,6 @@ private fun ModelCard(
     val detailText = listOfNotNull(releaseText, model.parameterCount, contextText)
         .joinToString("  ·  ").ifEmpty { null }
 
-    val primaryColor = if (isSelected) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
     val secondaryColor = if (isSelected) {
         MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
     } else {
@@ -286,12 +301,10 @@ private fun ModelCard(
             modifier = Modifier.padding(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = primaryColor,
+                val child = title
+                ModelPairChips(
+                    parent = parentName.ifBlank { child },
+                    child = child.takeIf { parentName.isNotBlank() && it != parentName },
                     modifier = Modifier.weight(1f),
                 )
                 if (model.isFreeTier) {
