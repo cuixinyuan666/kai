@@ -8,23 +8,31 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -34,15 +42,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment.Companion.CenterEnd
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.inspiredandroid.kai.data.CollaborationModelStatus
 import com.inspiredandroid.kai.data.Conversation
 import com.inspiredandroid.kai.data.ConversationFolderManager
 import com.inspiredandroid.kai.data.metadata
+import com.inspiredandroid.kai.data.war.WarVoting
 import com.inspiredandroid.kai.ui.chat.ChatActions
+import com.inspiredandroid.kai.ui.components.ModelPairChipsFromLabel
+import com.inspiredandroid.kai.ui.components.VerticalScrollbarForList
 import com.inspiredandroid.kai.ui.handCursor
 import kotlinx.collections.immutable.ImmutableList
 
@@ -71,6 +84,53 @@ internal fun rootHistoryItems(
     return singleChats + modeFolders
 }
 
+internal enum class HistoryTimeSort {
+    NewestFirst,
+    OldestFirst,
+}
+
+internal enum class HistoryNameSort {
+    Asc,
+    Desc,
+}
+
+internal fun sortHistoryItems(
+    items: List<Conversation>,
+    sort: HistoryTimeSort,
+    keepFoldersLast: Boolean,
+): List<Conversation> {
+    val (folders, rest) = if (keepFoldersLast) {
+        items.partition { it.type == Conversation.TYPE_FOLDER }
+    } else {
+        emptyList<Conversation>() to items
+    }
+    val sortedRest = if (sort == HistoryTimeSort.NewestFirst) {
+        rest.sortedByDescending { it.updatedAt }
+    } else {
+        rest.sortedBy { it.updatedAt }
+    }
+    val sortedFolders = if (sort == HistoryTimeSort.NewestFirst) {
+        folders.sortedByDescending { it.updatedAt }
+    } else {
+        folders.sortedBy { it.updatedAt }
+    }
+    return sortedRest + sortedFolders
+}
+
+internal fun sortByParentModelName(
+    items: List<Conversation>,
+    ascending: Boolean,
+): List<Conversation> {
+    val pinned = items.filter { it.type == Conversation.TYPE_WAR_RESULT }
+    val rest = items.filter { it.type != Conversation.TYPE_WAR_RESULT }
+    val sorted = rest.sortedWith { a, b ->
+        val byParent = WarVoting.parentName(a.title).compareTo(WarVoting.parentName(b.title), ignoreCase = true)
+        if (byParent != 0) byParent else a.title.compareTo(b.title, ignoreCase = true)
+    }
+    val ordered = if (ascending) sorted else sorted.asReversed()
+    return pinned + ordered
+}
+
 @Composable
 internal fun ChatHistoryTreeSheet(
     conversations: ImmutableList<Conversation>,
@@ -92,7 +152,11 @@ internal fun ChatHistoryTreeSheet(
             Conversation.FOLDER_WAR_MODE_ID,
         )
         val parentId = treeParentId
-        var sortReverse by remember(parentId) { mutableStateOf(false) }
+        val parentConv = conversations.find { it.id == parentId }
+        val sortByParentName = parentConv?.type == Conversation.TYPE_WAR_TASK
+        var newestFirst by remember(parentId) { mutableStateOf(true) }
+        var nameAsc by remember(parentId) { mutableStateOf(true) }
+        var sortMenuOpen by remember { mutableStateOf(false) }
 
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -122,12 +186,62 @@ internal fun ChatHistoryTreeSheet(
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(start = 8.dp).weight(1f),
                 )
-                IconButton(onClick = { sortReverse = !sortReverse }) {
-                    Icon(Icons.Default.Sort, contentDescription = if (sortReverse) "字母正序" else "字母反序")
+                Box {
+                    IconButton(onClick = { sortMenuOpen = true }) {
+                        Icon(
+                            Icons.Default.Sort,
+                            contentDescription = if (sortByParentName) {
+                                if (nameAsc) "按母模型字母正序" else "按母模型字母反序"
+                            } else {
+                                if (newestFirst) "最新任务置顶" else "按时间从早到晚"
+                            },
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = sortMenuOpen,
+                        onDismissRequest = { sortMenuOpen = false },
+                    ) {
+                        if (sortByParentName) {
+                            DropdownMenuItem(
+                                text = { Text("母模型名称 A→Z") },
+                                onClick = {
+                                    nameAsc = true
+                                    sortMenuOpen = false
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("母模型名称 Z→A") },
+                                onClick = {
+                                    nameAsc = false
+                                    sortMenuOpen = false
+                                },
+                            )
+                        } else {
+                            DropdownMenuItem(
+                                text = { Text("按时间从晚到早（最新置顶）") },
+                                onClick = {
+                                    newestFirst = true
+                                    sortMenuOpen = false
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("按时间从早到晚") },
+                                onClick = {
+                                    newestFirst = false
+                                    sortMenuOpen = false
+                                },
+                            )
+                        }
+                    }
                 }
                 if (parentId != null) {
                     IconButton(onClick = { onCopy(parentId, if (parentId in rootIds) 1 else 2) }) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "复制")
+                        Icon(
+                            Icons.Default.ContentCopy,
+                            contentDescription = "复制",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
                     }
                 }
             }
@@ -136,12 +250,16 @@ internal fun ChatHistoryTreeSheet(
                 null -> rootHistoryItems(conversations, rootIds)
                 else -> ConversationFolderManager.childrenOf(parentId, conversations)
             }
-            val items = remember(rawItems, sortReverse, parentId) {
-                if (parentId == null) {
-                    if (sortReverse) rawItems.reversed() else rawItems
+            val items = remember(rawItems, newestFirst, nameAsc, parentId, sortByParentName) {
+                if (sortByParentName) {
+                    sortByParentModelName(rawItems, nameAsc)
                 } else {
-                    val sorted = rawItems.sortedBy { it.title.lowercase() }
-                    if (sortReverse) sorted.reversed() else sorted
+                    val sort = if (newestFirst) HistoryTimeSort.NewestFirst else HistoryTimeSort.OldestFirst
+                    sortHistoryItems(
+                        items = rawItems,
+                        sort = sort,
+                        keepFoldersLast = parentId == null,
+                    )
                 }
             }
 
@@ -149,7 +267,13 @@ internal fun ChatHistoryTreeSheet(
             val isWarTaskLevel = parentId == Conversation.FOLDER_WAR_MODE_ID
             val isInsideTaskFolder = parentId != null && parentId !in rootIds
 
-            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+            val listState = rememberLazyListState()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 180.dp, max = 520.dp),
+            ) {
+            LazyColumn(modifier = Modifier.fillMaxSize(), state = listState) {
                 items(items, key = { it.id }) { item ->
                     HistoryTreeRow(
                         conversation = item,
@@ -201,6 +325,11 @@ internal fun ChatHistoryTreeSheet(
                     )
                 }
             }
+            VerticalScrollbarForList(
+                listState = listState,
+                modifier = Modifier.align(CenterEnd).fillMaxHeight(),
+            )
+            }
         }
     }
 }
@@ -241,13 +370,39 @@ private fun HistoryTreeRow(
             )
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = conversation.title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (
+                conversation.type == Conversation.TYPE_COLLABORATION_MODEL ||
+                conversation.type == Conversation.TYPE_WAR_MODEL
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    ModelPairChipsFromLabel(conversation.title, compact = true)
+                    if (meta.isSummaryModel) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                            shape = RoundedCornerShape(6.dp),
+                        ) {
+                            Text(
+                                text = "总结",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                }
+            } else {
+                Text(
+                    text = conversation.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             if (conversation.type == Conversation.TYPE_COLLABORATION_TASK && meta.collaborationQuestion != null) {
                 Text(
                     text = meta.collaborationQuestion!!,

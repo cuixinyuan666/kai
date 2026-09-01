@@ -1,6 +1,6 @@
 # Tools
 
-**Last verified:** 2026-08-09
+**Last verified:** 2026-08-31
 
 Kai's tools feature allows the AI to execute external functions during conversations — web search, notifications, calendar events, shell commands, memory operations, and more. Tools are defined with a schema, executed with safety guards, and managed through per-tool toggles in settings.
 
@@ -131,6 +131,8 @@ On Android, each conversation gets its own persistent bash session inside the Li
 
 The desktop tool dynamically includes the detected OS (macOS/Linux/Windows) and shell in its description so the AI knows the execution context.
 
+On **Windows**, commands run in **PowerShell 7 (pwsh)** that ships inside the app (`app/resources/pwsh/pwsh.exe` in the portable zip). Gradle downloads the official portable zip at package/`run` time (not stored in git). If that copy is missing, Kai uses `pwsh` from PATH, then Windows PowerShell 5.1 as a last resort. Background shell jobs use the same executable (not `cmd`).
+
 On desktop, dangerous environment variables (PATH, LD_PRELOAD, LD_LIBRARY_PATH, DYLD_INSERT_LIBRARIES, DYLD_LIBRARY_PATH, DYLD_FRAMEWORK_PATH) cannot be overridden via the `env` parameter.
 
 #### Process management
@@ -154,7 +156,7 @@ Output limits: desktop 30,000 chars per stream, Android 15,000 chars per stream.
 
 | Tool | Description | Default |
 |---|---|---|
-| `execute_shell_command` | Execute a shell command on the host machine | Disabled |
+| `execute_shell_command` | Execute a shell command on the host (Windows: bundled PowerShell 7) | Disabled |
 | `manage_process` | Manage background shell processes (list, log, kill, remove) | Follows the shell command toggle; no switch of its own |
 
 ## Execution Flow
@@ -288,6 +290,8 @@ The interactive-mode top bar shows only the static title — loading is surfaced
 | `composeApp/src/androidMain/.../linux/` | Shared Linux runtime: distro specs, rootfs download and extraction, installer, proot launcher, guest-path resolution |
 | `composeApp/src/commonMain/.../linux/LinuxDistro.kt` | The distributions, their package sets, and their package-manager commands and parsers |
 | `composeApp/src/jvmShared/.../tools/ProcessManagerTool.kt` | Process management tool shared by Android and desktop |
+| `composeApp/src/desktopMain/.../tools/ShellCommandTool.kt` | Desktop host shell |
+| `composeApp/src/desktopMain/.../tools/BundledPwsh.kt` | Resolves bundled PowerShell 7 for Windows |
 | `composeApp/src/desktopMain/.../tools/ProcessManager.kt` | Desktop background process tracking (host processes) |
 | `composeApp/src/androidMain/.../tools/ProcessManager.kt` | Android background process tracking (proot sandbox) |
 | `composeApp/src/androidMain/.../tools/OpenFileTool.kt` | Open sandbox file in an Android app via FileProvider Intent |

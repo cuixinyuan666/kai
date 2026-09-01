@@ -16,6 +16,8 @@ data class WarWizardParams(
     val attachedFiles: List<PlatformFile> = emptyList(),
     /** null 表示自动选择参与模型中测试分数最高者。 */
     val summaryModelOverride: ModelRef? = null,
+    /** 分歧投票轮询次数，默认 2 轮。 */
+    val voteRounds: Int = 2,
 )
 
 enum class WarPhase {
@@ -43,6 +45,8 @@ data class WarAspect(
     val id: String,
     val title: String,
     val description: String,
+    val proposedByLabels: List<String> = emptyList(),
+    val proposedByKeys: List<String> = emptyList(),
 )
 
 enum class WarVoteChoice {
@@ -57,6 +61,9 @@ data class WarModelVote(
     val modelLabel: String,
     val choice: String,
     val reason: String = "",
+    val aspectId: String = "",
+    val conversationId: String = "",
+    val messageId: String = "",
 )
 
 @Serializable
@@ -67,7 +74,16 @@ data class WarAspectResult(
     val agreeCount: Int get() = votes.count { it.choice == WarVoteChoice.AGREE.name }
     val disagreeCount: Int get() = votes.count { it.choice == WarVoteChoice.DISAGREE.name }
     val validVoteCount: Int get() = votes.count { it.choice != WarVoteChoice.ABSTAIN.name }
+    val agreePercent: Int get() = if (validVoteCount <= 0) 0 else (agreeCount * 100 / validVoteCount)
+    val disagreePercent: Int get() = if (validVoteCount <= 0) 0 else (disagreeCount * 100 / validVoteCount)
+    val disagreementVotes: List<WarModelVote> get() = votes.filter { it.choice == WarVoteChoice.DISAGREE.name }
 }
+
+@Serializable
+data class WarVoteRoundResult(
+    val round: Int,
+    val aspectResults: List<WarAspectResult> = emptyList(),
+)
 
 @Serializable
 data class WarTaskResult(
@@ -81,7 +97,17 @@ data class WarTaskResult(
     val phase: String = WarPhase.DONE.name,
     val round1SuccessCount: Int = 0,
     val round1TotalCount: Int = 0,
+    val voteRoundResults: List<WarVoteRoundResult> = emptyList(),
+    val voteRoundCount: Int = 1,
+    val finalSummary: String? = null,
+    val summaryConversationId: String? = null,
 )
+
+fun WarTaskResult.displayVoteRounds(): List<WarVoteRoundResult> {
+    if (voteRoundResults.isNotEmpty()) return voteRoundResults
+    if (aspectResults.isNotEmpty()) return listOf(WarVoteRoundResult(round = 1, aspectResults = aspectResults))
+    return emptyList()
+}
 
 interface WarListener {
     fun onTaskStarted(taskId: String)

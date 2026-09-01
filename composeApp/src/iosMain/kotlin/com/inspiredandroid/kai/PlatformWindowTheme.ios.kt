@@ -6,3 +6,7 @@ import androidx.compose.runtime.Composable
 actual fun SyncPlatformWindowTheme() {
     // iOS 无桌面窗口标题栏。
 }
+
+@Composable
+actual fun PlatformTitleBar() {
+}

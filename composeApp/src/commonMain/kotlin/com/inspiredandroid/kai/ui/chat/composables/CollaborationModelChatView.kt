@@ -1,6 +1,7 @@
 package com.inspiredandroid.kai.ui.chat.composables
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,20 +24,28 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.inspiredandroid.kai.data.Conversation
 import com.inspiredandroid.kai.data.ConversationCopyFormatter
 import com.inspiredandroid.kai.data.metadata
 import com.inspiredandroid.kai.ui.chat.ChatActions
+import com.inspiredandroid.kai.ui.components.ModelPairChipsFromLabel
+import com.inspiredandroid.kai.ui.components.VerticalScrollbarForScroll
 import com.inspiredandroid.kai.ui.rememberCopyToClipboard
 
 /**
@@ -54,12 +63,22 @@ internal fun CollaborationModelChatView(
     onNextModel: () -> Unit,
     modelBenchmarks: Map<String, Double> = emptyMap(),
     serviceIdForModel: String? = null,
+    highlightMessageId: String? = null,
 ) {
     val copyToClipboard = rememberCopyToClipboard()
-    val question = conversation.metadata().collaborationQuestion
-        ?: conversation.messages.firstOrNull { it.role == "user" }?.content.orEmpty()
-    val answer = conversation.messages.lastOrNull { it.role == "assistant" }?.content.orEmpty()
+    val visibleMessages = conversation.messages.filter {
+        (it.role == "user" || it.role == "assistant") && it.content.isNotBlank()
+    }
+    val questionFallback = conversation.metadata().collaborationQuestion.orEmpty()
     val meta = conversation.metadata()
+    val isSummaryModel = meta.isSummaryModel
+    val scrollState = rememberScrollState()
+    var highlightY by remember(highlightMessageId, conversation.id) { mutableIntStateOf(0) }
+    LaunchedEffect(highlightY, highlightMessageId) {
+        if (highlightMessageId != null && highlightY > 0) {
+            scrollState.animateScrollTo(highlightY)
+        }
+    }
     val benchmarkKey = if (serviceIdForModel != null && meta.modelId != null) {
         "$serviceIdForModel::${meta.modelId}"
     } else {
@@ -106,24 +125,63 @@ internal fun CollaborationModelChatView(
                         tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
-                Text(
+                ModelPairChipsFromLabel(
                     conversation.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
                 )
+                if (isSummaryModel) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                        shape = RoundedCornerShape(6.dp),
+                    ) {
+                        Text(
+                            text = "总结",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
+                    }
+                }
             }
 
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(16.dp)
+                    .padding(end = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                WeChatBubble(isUser = true, text = question)
-                if (answer.isNotBlank()) {
-                    WeChatBubble(isUser = false, text = answer)
+                if (visibleMessages.isEmpty()) {
+                    if (questionFallback.isNotBlank()) {
+                        WeChatBubble(isUser = true, text = questionFallback)
+                    }
+                } else {
+                    visibleMessages.forEach { message ->
+                        val highlighted = highlightMessageId != null && message.id == highlightMessageId
+                        Box(
+                            modifier = Modifier.onGloballyPositioned { coords ->
+                                if (highlighted) {
+                                    highlightY = coords.positionInParent().y.toInt()
+                                }
+                            },
+                        ) {
+                            WeChatBubble(
+                                isUser = message.role == "user",
+                                text = message.content,
+                                isSummary = isSummaryModel && message.role == "assistant",
+                                highlighted = highlighted,
+                            )
+                        }
+                    }
                 }
+            }
+            VerticalScrollbarForScroll(
+                scrollState = scrollState,
+                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+            )
             }
 
             Column(
@@ -185,23 +243,57 @@ internal fun CollaborationModelChatView(
 }
 
 @Composable
-private fun WeChatBubble(isUser: Boolean, text: String) {
+private fun WeChatBubble(
+    isUser: Boolean,
+    text: String,
+    isSummary: Boolean = false,
+    highlighted: Boolean = false,
+) {
+    val bubbleColor = when {
+        isSummary -> MaterialTheme.colorScheme.tertiaryContainer
+        isUser -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+    val textColor = when {
+        isSummary -> MaterialTheme.colorScheme.onTertiaryContainer
+        isUser -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    val textStyle = if (isSummary) {
+        MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+    } else {
+        MaterialTheme.typography.bodyMedium
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
     ) {
-        Text(
-            text = text,
-            modifier = Modifier
-                .fillMaxWidth(0.85f)
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    if (isUser) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surfaceContainerHigh,
+        Column(modifier = Modifier.fillMaxWidth(0.85f)) {
+            if (isSummary) {
+                Text(
+                    text = "总结模型",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.padding(bottom = 4.dp),
                 )
-                .padding(12.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-        )
+            }
+            Text(
+                text = text,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(bubbleColor)
+                    .then(
+                        if (highlighted) {
+                            Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .padding(12.dp),
+                style = textStyle,
+                color = textColor,
+            )
+        }
     }
 }

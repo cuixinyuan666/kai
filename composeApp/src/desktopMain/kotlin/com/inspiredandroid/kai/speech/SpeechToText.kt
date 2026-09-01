@@ -10,7 +10,10 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.vosk.Model
 import org.vosk.Recognizer
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.charset.Charset
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioSystem
@@ -26,6 +29,9 @@ internal class VoskSpeechToText : SpeechToText {
     private var captureThread: Thread? = null
     private var recognizer: Recognizer? = null
     private var model: Model? = null
+    private var activeLanguage: String = "zh"
+    private val pcmLock = Any()
+    private var pcmBuffer = ByteArrayOutputStream()
 
     override val isSupported: Boolean = currentPlatform is Platform.Desktop.Windows
     override val isListening: Boolean get() = listening.get()
@@ -33,11 +39,16 @@ internal class VoskSpeechToText : SpeechToText {
     override suspend fun startListening(languageTag: String): Result<Unit> = withContext(Dispatchers.IO) {
         if (!isSupported) return@withContext Result.failure(IllegalStateException("Speech not supported"))
         if (listening.get()) return@withContext Result.success(Unit)
-        val spec = if (languageTag.startsWith("zh")) MODEL_CN else MODEL_EN
-        val modelPath = resolveModelDirectory(spec)?.absolutePath
+        val spec = specFor(languageTag)
+        activeLanguage = if (languageTag.startsWith("zh")) "zh" else "en"
+        val modelDir = resolveModelDirectory(spec)
+        val modelPath = modelDir?.absolutePath
             ?: return@withContext Result.failure(IllegalStateException("无法加载语音识别模型"))
         runCatching {
             releaseRecognizer()
+            synchronized(pcmLock) {
+                pcmBuffer = ByteArrayOutputStream()
+            }
             model = Model(modelPath)
             recognizer = Recognizer(model, SAMPLE_RATE)
             listening.set(true)
@@ -58,7 +69,20 @@ internal class VoskSpeechToText : SpeechToText {
         captureThread?.join(20_000)
         captureThread = null
         val rec = recognizer
-        val text = if (rec != null) parseVoskText(rec.finalResult) else ""
+        val rawJson = if (rec != null) rec.finalResult.orEmpty() else ""
+        val raw = parseVoskText(rawJson)
+        var language = activeLanguage
+        var text = SpeechLanguage.normalizeTranscript(raw, language)
+        val pcm = synchronized(pcmLock) { pcmBuffer.toByteArray() }
+        if (SpeechLanguage.looksMismatched(text, language) && pcm.isNotEmpty()) {
+            val other = if (language == "zh") "en" else "zh"
+            val retry = recognizeBuffer(pcm, other)
+            if (retry != null && !SpeechLanguage.looksMismatched(retry, other)) {
+                language = other
+                activeLanguage = other
+                text = retry
+            }
+        }
         releaseRecognizer()
         Result.success(text)
     }
@@ -83,11 +107,39 @@ internal class VoskSpeechToText : SpeechToText {
                 val read = line.read(buffer, 0, buffer.size)
                 if (read > 0) {
                     rec.acceptWaveForm(buffer, read)
+                    synchronized(pcmLock) {
+                        pcmBuffer.write(buffer, 0, read)
+                    }
                 }
             }
         } finally {
             line.stop()
             line.close()
+        }
+    }
+
+    private fun recognizeBuffer(pcm: ByteArray, languageTag: String): String? {
+        val spec = specFor(languageTag)
+        val path = resolveModelDirectory(spec)?.absolutePath ?: return null
+        var retryModel: Model? = null
+        var retryRec: Recognizer? = null
+        return try {
+            retryModel = Model(path)
+            retryRec = Recognizer(retryModel, SAMPLE_RATE)
+            var offset = 0
+            val chunk = 4096
+            while (offset < pcm.size) {
+                val n = minOf(chunk, pcm.size - offset)
+                val slice = pcm.copyOfRange(offset, offset + n)
+                retryRec.acceptWaveForm(slice, n)
+                offset += n
+            }
+            SpeechLanguage.normalizeTranscript(parseVoskText(retryRec.finalResult.orEmpty()), languageTag)
+        } catch (_: Exception) {
+            null
+        } finally {
+            retryRec?.close()
+            retryModel?.close()
         }
     }
 
@@ -99,30 +151,51 @@ internal class VoskSpeechToText : SpeechToText {
     }
 
     private fun resolveModelDirectory(spec: ModelSpec): File? {
-        val bundledRoot = System.getProperty("compose.application.resources.dir")
-        if (bundledRoot != null) {
-            val bundled = File(bundledRoot, "vosk/${spec.folderName}")
-            if (isModelReady(bundled)) return bundled
-        }
-        val cached = File(getAppFilesDirectory(), "vosk/${spec.folderName}")
-        if (isModelReady(cached)) return cached
-        return null
+        val userDir = System.getProperty("user.dir").orEmpty()
+        val candidates = listOfNotNull(
+            System.getProperty("compose.application.resources.dir")?.let { File(it, "vosk/${spec.folderName}") },
+            File(getAppFilesDirectory(), "vosk/${spec.folderName}"),
+            File(userDir, "composeApp/appResources/common/vosk/${spec.folderName}"),
+            File(userDir, "appResources/common/vosk/${spec.folderName}"),
+        )
+        return candidates.firstOrNull { isModelReady(it) }
     }
 
     private fun isModelReady(dir: File): Boolean =
         dir.isDirectory && (dir.resolve("am/final.mdl").exists() || dir.resolve("conf/model.conf").exists())
 
-    private fun parseVoskText(json: String): String = runCatching {
-        Json.parseToJsonElement(json).jsonObject["text"]?.jsonPrimitive?.content?.trim() ?: ""
+    private fun parseVoskText(json: String): String {
+        val direct = textField(json)
+        val recovered = runCatching {
+            textField(String(json.toByteArray(charset("GBK")), StandardCharsets.UTF_8))
+        }.getOrDefault("")
+        return pickReadable(direct, recovered)
+    }
+
+    private fun textField(json: String): String = runCatching {
+        Json.parseToJsonElement(json).jsonObject["text"]?.jsonPrimitive?.content?.trim().orEmpty()
     }.getOrDefault("")
+
+    private fun pickReadable(direct: String, recovered: String): String {
+        if (direct.isBlank()) return recovered
+        if (recovered.isBlank()) return direct
+        val directBad = direct.count { it == '\uFFFD' }
+        val recoveredBad = recovered.count { it == '\uFFFD' }
+        if (recoveredBad < directBad) return recovered
+        val directCjk = direct.count { it in '\u4e00'..'\u9fff' }
+        val recoveredCjk = recovered.count { it in '\u4e00'..'\u9fff' }
+        if (recoveredCjk > directCjk + 1) return recovered
+        return direct
+    }
+
+    private fun specFor(languageTag: String): ModelSpec =
+        if (languageTag.startsWith("zh")) MODEL_CN else MODEL_EN
 
     private data class ModelSpec(val folderName: String)
 
     private companion object {
         const val SAMPLE_RATE = 16000f
-
         val MODEL_EN = ModelSpec(folderName = "vosk-model-small-en-us-0.15")
-
         val MODEL_CN = ModelSpec(folderName = "vosk-model-small-cn-0.22")
     }
 }

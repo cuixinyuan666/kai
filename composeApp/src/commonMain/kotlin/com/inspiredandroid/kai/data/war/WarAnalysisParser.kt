@@ -59,6 +59,7 @@ object WarAnalysisParser {
                         null -> WarVoteChoice.ABSTAIN.name
                     },
                     reason = reason,
+                    aspectId = aspectId,
                 )
             }
         }
@@ -69,6 +70,7 @@ object WarAnalysisParser {
                 modelLabel = modelLabel,
                 choice = WarVoteChoice.ABSTAIN.name,
                 reason = "",
+                aspectId = aspect.id,
             )
         }
     }
@@ -76,9 +78,17 @@ object WarAnalysisParser {
     fun aggregateAspectResults(
         aspects: List<WarAspect>,
         allVotes: List<List<WarModelVote>>,
-    ): List<WarAspectResult> = aspects.mapIndexed { index, aspect ->
-        val votes = allVotes.mapNotNull { voteList -> voteList.getOrNull(index) }
-        WarAspectResult(aspect = aspect, votes = votes)
+    ): List<WarAspectResult> {
+        val flat = allVotes.flatten()
+        val useIds = flat.any { it.aspectId.isNotBlank() }
+        return aspects.mapIndexed { index, aspect ->
+            val votes = if (useIds) {
+                flat.filter { it.aspectId == aspect.id }
+            } else {
+                allVotes.mapNotNull { voteList -> voteList.getOrNull(index) }
+            }
+            WarAspectResult(aspect = aspect, votes = votes)
+        }
     }
 
     private fun parseAspect(obj: JsonObject): WarAspect? {
@@ -86,7 +96,15 @@ object WarAnalysisParser {
         val title = obj["title"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
         val description = obj["description"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
         if (id.isBlank() || title.isBlank()) return null
-        return WarAspect(id = id, title = title, description = description)
+        val proposedBy = obj["proposedBy"]?.jsonArray?.mapNotNull { el ->
+            el.jsonPrimitive.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+        } ?: emptyList()
+        return WarAspect(
+            id = id,
+            title = title,
+            description = description,
+            proposedByLabels = proposedBy,
+        )
     }
 
     private fun parseAgreeValue(element: kotlinx.serialization.json.JsonElement?): Boolean? {

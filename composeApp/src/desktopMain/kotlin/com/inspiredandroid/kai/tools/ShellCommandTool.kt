@@ -63,14 +63,33 @@ private fun readBounded(reader: BufferedReader): String {
 
 private fun buildDescription(): String {
     val osName = System.getProperty("os.name", "").lowercase()
+    val isWindows = "win" in osName
     val platform = when {
         "mac" in osName || "darwin" in osName -> "macOS"
-        "win" in osName -> "Windows"
+        isWindows -> "Windows"
         else -> "Linux"
     }
-    val shell = if ("win" in osName) "PowerShell" else "sh"
+    val shell = if (isWindows) {
+        val resolved = BundledPwsh.resolve()
+        if (resolved.isPowerShell7) {
+            "PowerShell 7 (pwsh, bundled with Kai)"
+        } else {
+            "Windows PowerShell 5.1 (PowerShell 7 was not found)"
+        }
+    } else {
+        "sh"
+    }
+    val windowsHint = if (isWindows) {
+        """
+This is PowerShell 7 syntax (??, &&, ?: are valid). Do not use Windows PowerShell 5.1-only constructs.
+Prefer the working_dir argument to set the folder; otherwise use Set-Location then the command.
+"""
+    } else {
+        ""
+    }
     return """Execute a shell command on the host machine ($platform, shell: $shell) and return stdout, stderr, and exit code.
 Each command runs in a fresh shell — use "cd dir && command" for directory changes.
+$windowsHint
 Output is limited to ${MAX_OUTPUT_LENGTH} characters per stream; for large output, pipe through head/tail.
 Default timeout: ${DEFAULT_TIMEOUT_SECONDS}s, max: ${MAX_TIMEOUT_SECONDS}s.
 Use for file operations, system info, running scripts, installing packages, etc.
@@ -117,8 +136,7 @@ object ShellCommandTool : Tool {
         return try {
             val isWindows = System.getProperty("os.name").lowercase().contains("win")
             val processBuilder = if (isWindows) {
-                // Windows 下使用本地 PowerShell（而非 cmd），以兼容 PowerShell 语法与模块。
-                ProcessBuilder("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command)
+                BundledPwsh.processBuilder(command)
             } else {
                 ProcessBuilder("sh", "-c", command)
             }

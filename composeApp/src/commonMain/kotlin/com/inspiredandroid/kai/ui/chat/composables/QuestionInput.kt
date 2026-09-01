@@ -64,6 +64,7 @@ import com.inspiredandroid.kai.data.ServiceEntry
 import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.imageExtensions
 import com.inspiredandroid.kai.skills.SkillManifest
+import com.inspiredandroid.kai.speech.SpeechLanguage
 import com.inspiredandroid.kai.ui.components.HoverTooltip
 import com.inspiredandroid.kai.ui.gradientBrush
 import com.inspiredandroid.kai.ui.handCursor
@@ -112,7 +113,10 @@ fun QuestionInput(
     speechSupported: Boolean = false,
     isSpeechListening: Boolean = false,
     onToggleSpeechInput: () -> Unit = {},
+    sttLanguage: String = "zh",
+    onCycleSttLanguage: () -> Unit = {},
     installedSkills: ImmutableList<SkillManifest> = persistentListOf(),
+    showSendButton: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
@@ -242,7 +246,7 @@ fun QuestionInput(
                                 ),
                             )
                             return@onPreviewKeyEvent true
-                        } else {
+                        } else if (showSendButton && chatMode == ChatMode.SINGLE) {
                             // Enter without Shift -> send message and consume event
                             submitQuestion()
                             return@onPreviewKeyEvent true
@@ -264,6 +268,17 @@ fun QuestionInput(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     if (speechSupported) {
+                        HoverTooltip("识别语言（中/EN）") {
+                            Text(
+                                text = SpeechLanguage.label(sttLanguage),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .clickable(onClick = onCycleSttLanguage)
+                                    .handCursor()
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                            )
+                        }
                         CircleIconButton(
                             icon = Icons.Default.Mic,
                             onClick = onToggleSpeechInput,
@@ -285,12 +300,12 @@ fun QuestionInput(
                     }
                     if (isLoading) {
                         TrailingIcon(icon = Res.drawable.ic_stop, onClick = cancel, isPulsing = true, tooltip = "停止生成")
-                    } else if (textState.text.isNotBlank()) {
+                    } else if (showSendButton && chatMode == ChatMode.SINGLE && textState.text.isNotBlank()) {
                         TrailingIcon(icon = Res.drawable.ic_up, onClick = { submitQuestion() }, tooltip = "发送")
                     }
                 }
             },
-            keyboardActions = if (currentPlatform !is Platform.Mobile) {
+            keyboardActions = if (currentPlatform !is Platform.Mobile && showSendButton && chatMode == ChatMode.SINGLE) {
                 KeyboardActions(onSend = { submitQuestion() })
             } else {
                 KeyboardActions() // No keyboard send action on mobile
@@ -316,7 +331,11 @@ fun QuestionInput(
                 }
             },
             keyboardOptions = KeyboardOptions(
-                imeAction = if (currentPlatform is Platform.Mobile) ImeAction.Default else ImeAction.Send,
+                imeAction = if (currentPlatform is Platform.Mobile || !showSendButton || chatMode != ChatMode.SINGLE) {
+                    ImeAction.Default
+                } else {
+                    ImeAction.Send
+                },
             ),
         )
         val inInspection = LocalInspectionMode.current

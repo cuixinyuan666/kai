@@ -2,6 +2,7 @@ package com.inspiredandroid.kai.data
 
 import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_CONFIGURED_SERVICES
 import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_CURRENT_SERVICE_ID
+import com.inspiredandroid.kai.data.AppSettings.Companion.KEY_SERVICE_DISPLAY_ORDER
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -80,6 +81,42 @@ fun AppSettings.setConfiguredServiceInstances(instances: List<ServiceInstance>) 
         },
     )
     settings.putString(KEY_CONFIGURED_SERVICES, jsonArray.toString())
+}
+
+fun AppSettings.getServiceDisplayOrder(): List<String> {
+    val json = settings.getString(KEY_SERVICE_DISPLAY_ORDER, "")
+    val parsed = if (json.isNotBlank()) {
+        try {
+            Json.parseToJsonElement(json).jsonArray.map { it.jsonPrimitive.content }.filter { it.isNotBlank() }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    } else {
+        emptyList()
+    }
+    val configuredIds = getConfiguredServiceInstances().map { it.instanceId }
+    val known = (listOf("free") + configuredIds).toSet()
+    val filtered = parsed.filter { it in known }
+    if (filtered.isNotEmpty()) {
+        val withFree = if (filtered.none { it == "free" }) {
+            if (isFreeServicePrimary() || configuredIds.isEmpty()) listOf("free") + filtered else filtered + "free"
+        } else {
+            filtered
+        }
+        val missing = configuredIds.filter { it !in withFree.toSet() }
+        return withFree + missing
+    }
+    return if (isFreeServicePrimary() || configuredIds.isEmpty()) {
+        listOf("free") + configuredIds
+    } else {
+        configuredIds + listOf("free")
+    }
+}
+
+fun AppSettings.setServiceDisplayOrder(ids: List<String>, updatePrimary: Boolean = true) {
+    val jsonArray = kotlinx.serialization.json.JsonArray(ids.map { JsonPrimitive(it) })
+    settings.putString(KEY_SERVICE_DISPLAY_ORDER, jsonArray.toString())
+    if (updatePrimary) setFreeServicePrimary(ids.firstOrNull() == "free")
 }
 
 // Per-instance settings (API key, model, base URL)

@@ -115,14 +115,12 @@ object ConversationFolderManager {
     }
 
     fun modelFolderTitle(serviceName: String, modelLabel: String): String {
-        val serviceSlug = slug(serviceName)
-        val modelSlug = slug(modelLabel)
-        return if (modelSlug.startsWith(serviceSlug)) modelSlug else "$serviceSlug-$modelSlug"
-    }
-
-    private fun slug(raw: String): String {
-        val lowered = raw.lowercase().trim()
-        val replaced = lowered.replace(Regex("[^a-z0-9]+"), "-").trim('-')
-        return replaced.ifEmpty { "model" }
+        val parent = serviceName.trim().ifBlank { "模型" }
+        val child = modelLabel.trim()
+        return if (child.isBlank() || child.equals(parent, ignoreCase = true)) {
+            parent
+        } else {
+            "$parent / $child"
+        }
     }
 }

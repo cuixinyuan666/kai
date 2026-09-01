@@ -23,4 +23,5 @@ data class ServiceEntry(
 data class ServiceModelOption(
     val id: String,
     val label: String,
+    val isFreeTier: Boolean = false,
 )

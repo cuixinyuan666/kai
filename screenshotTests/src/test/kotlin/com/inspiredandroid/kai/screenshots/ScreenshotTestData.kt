@@ -79,6 +79,7 @@ object ScreenshotTestData {
         optimizePrompt = {},
         clearPendingPromptText = {},
         resendUserMessage = { _, _ -> },
+        openWarModelMessage = { _, _ -> },
     )
 
     val chatEmptyState = ChatUiState(

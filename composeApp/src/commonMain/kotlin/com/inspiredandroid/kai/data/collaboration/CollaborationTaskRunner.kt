@@ -3,10 +3,15 @@ package com.inspiredandroid.kai.data.collaboration
 import com.inspiredandroid.kai.data.CollaborationModelStatus
 import com.inspiredandroid.kai.data.ConversationFolderManager
 import com.inspiredandroid.kai.data.DataRepository
+import com.inspiredandroid.kai.data.FolderAttachments
+import com.inspiredandroid.kai.data.TaskAutoScore
+import io.github.vinceglb.filekit.isDirectory
+import io.github.vinceglb.filekit.name
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlin.concurrent.Volatile
+import kotlin.time.TimeSource
 
 /**
  * 协作任务编排：为每个达标模型创建独立会话，并以单一模式完整流水线并行作答。
@@ -25,7 +30,7 @@ class CollaborationTaskRunner(
     suspend fun runTask(params: CollaborationWizardParams) {
         val eligible = CollaborationSupport.resolveEligibleModels(repository, params.minScoreThreshold)
         if (eligible.isEmpty()) {
-            listener.onNotify("无法开始协作", "没有模型测试分数 > ${params.minScoreThreshold} 的模型。")
+            listener.onNotify("无法开始协作", "没有模型测试分数 ≥ ${params.minScoreThreshold} 的模型。")
             listener.onTaskFinished("", "没有符合条件的模型。")
             return
         }
@@ -33,10 +38,15 @@ class CollaborationTaskRunner(
         val services = runCatching { repository.getServiceEntries() }.getOrDefault(emptyList())
         val labelResolver = CollaborationSupport.buildLabelResolver(services)
 
+        val promptPrefix = FolderAttachments.promptPrefix(params.attachedFiles)
+        val leafFiles = FolderAttachments.withoutDirectories(params.attachedFiles)
+        val prompt = promptPrefix + params.question
+
         val taskId = repository.createCollaborationTask(
             question = params.question,
             params = params,
         )
+        listener.onTaskStarted(taskId)
 
         listener.onEvent(
             CollaborationEvent(
@@ -55,7 +65,7 @@ class CollaborationTaskRunner(
                     label.substringBefore("/").trim(),
                     label.substringAfter("/", label),
                 ),
-                question = params.question,
+                question = prompt,
                 params = params,
             )
             ref to (convId to label)
@@ -78,12 +88,13 @@ class CollaborationTaskRunner(
                             sessionKey = ref.key,
                         ),
                     )
-                    val result = CollaborationSupport.callWithRetry(
+                    val started = TimeSource.Monotonic.markNow()
+                    val call = CollaborationSupport.callWithRetry(
                         repository = repository,
                         conversationId = convId,
                         ref = ref,
-                        prompt = params.question,
-                        files = params.attachedFiles,
+                        prompt = prompt,
+                        files = leafFiles,
                         retryCount = params.retryCount,
                         timeoutMs = timeoutMs,
                         label = label,
@@ -102,6 +113,7 @@ class CollaborationTaskRunner(
                         },
                         onFailureNotify = listener::onNotify,
                     )
+                    val result = call.text
                     val status = if (result.isNullOrBlank()) {
                         CollaborationModelStatus.FAILED
                     } else {
@@ -109,6 +121,7 @@ class CollaborationTaskRunner(
                     }
                     repository.updateCollaborationModelStatus(convId, status, result)
                     listener.onModelStatusChanged(convId, status)
+                    scoreCall(ref, label, result, started.elapsedNow().inWholeMilliseconds, call.attempts, status == CollaborationModelStatus.FAILED)
                     if (status == CollaborationModelStatus.COMPLETED) {
                         listener.onEvent(
                             CollaborationEvent(
@@ -162,5 +175,33 @@ class CollaborationTaskRunner(
         }
 
         listener.onTaskFinished(taskId, summary)
+        if (taskId.isNotBlank()) {
+            repository.completeTaskConversation(taskId, CollaborationModelStatus.COMPLETED)
+        }
+    }
+
+    private fun scoreCall(
+        ref: ModelRef,
+        label: String,
+        response: String?,
+        elapsedMs: Long,
+        attempts: Int,
+        failed: Boolean,
+    ) {
+        val serviceId = runCatching { repository.getServiceEntries() }
+            .getOrDefault(emptyList())
+            .find { it.instanceId == ref.instanceId }
+            ?.serviceId
+            .orEmpty()
+        TaskAutoScore.record(
+            repository = repository,
+            serviceId = serviceId,
+            modelId = ref.modelId,
+            modelLabel = label,
+            response = response,
+            elapsedMs = elapsedMs,
+            attempts = attempts,
+            failed = failed,
+        )
     }
 }

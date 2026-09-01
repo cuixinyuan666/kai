@@ -1,6 +1,6 @@
 # Chat & Conversations
 
-**Last verified:** 2026-08-30
+**Last verified:** 2026-09-01
 
 Kai's chat system manages the message history, conversation persistence, file attachments, and speech output. Conversations are service-independent — switching providers does not affect which conversation is loaded or restored. Multiple conversations are persisted and browsable via a history sheet.
 
@@ -8,7 +8,7 @@ Kai's chat system manages the message history, conversation persistence, file at
 
 ### Conversation
 
-A persisted chat session containing an id (UUID), message list, timestamps (`createdAt`, `updatedAt`), a title, and a type (`chat`, `heartbeat`, or `interactive`). Conversations are stored in a local database (browser builds use the settings store) and restored across app launches.
+A persisted chat session containing an id (UUID), message list, timestamps (`createdAt`, `updatedAt`), a title, and a type (`chat`, `heartbeat`, or `interactive`). Conversations are stored in a local database (browser builds use the settings store) and remain available from the history sheet after a restart.
 
 ### History
 
@@ -20,21 +20,23 @@ Auto-derived from the first user message when a conversation is saved for the fi
 
 ## Conversation Lifecycle
 
-- The "current conversation" pointer is persisted across launches: opening the app restores whichever conversation was last active, including an empty new chat the user explicitly started
+- Opening the app does **not** restore the last chat into the main pane. The initial screen shows the CUI name (no spinning progress indicator); saved conversations remain available from the history sheet
 - If the persisted pointer references a conversation that no longer exists (or is null because the user started a new chat), the app opens to an empty new chat
-- "New Chat" clears history, unsets the current conversation pointer, and persists the empty state — so an unused new chat survives an app restart
+- "New Chat" clears history, unsets the current conversation pointer, and persists the empty state
 - A new conversation ID (UUID) is allocated when the user sends the first message; the conversation is persisted immediately and updated after each assistant response
 - Conversations are saved when the user sends a message and again after each assistant response
 - Only the most recent 20 exchanges are persisted per chat conversation; heartbeat conversations have a separate, larger cap of 50 messages so longer automation runs are not truncated as aggressively
 - Multiple conversations are persisted — starting a new chat preserves previous conversations
 - Conversations are service-independent — switching services does not affect which conversation is loaded
-- Interactive vs normal chat mode is persisted alongside the current pointer, so an empty interactive chat also survives a restart
-- On the first launch after upgrading from a build that did not persist the current-conversation pointer, a one-time migration pins the most recently updated conversation as the current pointer so the user resumes where they left off
+- Interactive vs normal chat mode is persisted while the app stays open; a restart still opens the empty CUI screen rather than an interactive session
 
 ## Chat History
 
 - A history icon in the top bar opens a bottom sheet of saved conversations
-- **Single-mode chats** (normal and interactive) appear directly at the root of the history sheet, sorted by last updated (newest first)
+- **Single-mode chats** (normal and interactive) appear directly at the root of the history sheet
+- History lists can be sorted **by time newest-first** (default, latest tasks on top) or **oldest-first**
+- Inside a **war task folder** (the list under a dated task such as `2026-8月-31-任务9`), rows sort by **parent model name** A→Z or Z→A instead of time; the task-result row stays pinned at the top
+- Model conversations show a **parent model chip** plus a **child model chip**
 - **Collaboration** and **War mode** tasks live under their respective mode folders; tap a folder to browse tasks and model sub-conversations
 - The legacy flat list behavior is preserved for single-mode chats; only collaboration and war workflows use the folder tree
 - Each item shows the title; tapping loads that conversation and dismisses the sheet
@@ -91,6 +93,7 @@ Multiple files can be attached to a single prompt. Each file is added one at a t
 - The attachment button is shown whenever the active service supports file attachments (text files work with all remote models); it is hidden when the active service runs on-device, since on-device services do not support attachments
 - Unsupported file types (e.g., `.zip`) show an error message
 - Files exceeding the per-category size limit show a size error; size is checked by stat before the file is read, so multi-gigabyte attachments are rejected without allocating memory for the full contents
+- A **folder** may be attached. In collaboration and war, the folder is described by path and a short listing; models read files with the shell instead of embedding the tree. In single-mode chat, a folder is still expanded into files, but `.git` / `node_modules` / `build` and similar directories are skipped and expansion stops after 40 files or about 400 KB of encoded payload
 - Long filenames in chips are truncated with an ellipsis while preserving the extension
 - File attachments persist across conversation save/restore via an `attachments` list on each message; older conversations saved with a single-file schema are migrated on load
 
@@ -117,9 +120,13 @@ Multiple files can be attached to a single prompt. Each file is added one at a t
 - **Scroll to bottom**: a small floating action button (down arrow) appears when the user has scrolled up past the latest messages; tapping it animates back to the bottom
 - **Messages**: user (right-aligned, with optional image preview), assistant (Markdown-rendered + action buttons), tool executing (spinner), loading indicator, error with retry (or free-provider suggestions panel when Free is rate-limited with no services configured). When the fallback chain answered with an alternate service rather than the user's selected one, a small "Answered by …" label is shown under the assistant message naming the service that produced the response
 - **Input**: text field, send/stop button, attachment button, file chip
-- **Empty state**: animated logo + welcome message
+- **Empty state**: CUI name on an empty new chat (no spinner). Letters use a 176 sp wordmark; the animated double-dot used as the `i` tittle is the same size as the standalone double-dot icon (52 dp) and sits on the stem
+- **Hover tips**: sit **outside** the button (below when space allows, otherwise above). A thin transparent bridge keeps the tip from flickering when the pointer moves onto it; the tip surface does not cover the button
+- **Speech input (STT)**: Windows desktop uses bundled Vosk models. A **中 / EN** control next to the microphone selects the recognizer; empty input defaults to Chinese. Typed CJK forces the Chinese model; a Latin-only draft can switch to English. After stop, a mismatched or replacement-character transcript is re-recognized with the other language model and replacement characters are stripped. Chinese transcripts also drop extra spaces between characters
+- **Scrollbars (desktop)**: lists and long panes show a drag-able scrollbar (chat, history, war result table, settings, skills, MCP, sandbox, Kai Build, model picker)
 - **Drag-and-drop**: supported for file attachments
 - **History sheet**: bottom sheet listing saved conversations with title, date, active highlight, and delete
+- **Auto score**: after a single-mode reply succeeds, the model receives an automatic score (word-count/time, completion, stability, quality). A user-set score is never overwritten
 
 ## Key Files
 
@@ -136,4 +143,9 @@ Multiple files can be attached to a single prompt. Each file is added one at a t
 | `composeApp/src/commonMain/.../ui/chat/composables/ChatHistorySheet.kt` | Bottom sheet listing saved conversations |
 | `composeApp/src/commonMain/.../ui/chat/composables/HeartbeatBanner.kt` | Dismissable banner for heartbeat notifications |
 | `composeApp/src/commonMain/.../ui/chat/composables/TopBar.kt` | Top bar with new chat, history, TTS, and settings icons |
-| `composeApp/src/commonMain/.../ui/chat/composables/QuestionInput.kt` | Text input with send/stop button |
+| `composeApp/src/commonMain/.../ui/chat/composables/QuestionInput.kt` | Text input with send/stop button, STT language chip |
+| `composeApp/src/commonMain/.../speech/SpeechLanguage.kt` | STT language resolve / cycle / transcript normalize |
+| `composeApp/src/commonMain/.../ui/components/HoverTooltip.kt` | Hover popup tips without covering the button |
+| `composeApp/src/commonMain/.../ui/components/DesktopScrollbar.kt` | Desktop drag-able scrollbars |
+| `composeApp/src/commonMain/.../ui/components/CuiBranding.kt` | Empty-state CUI letters + animated i-dot |
+| `composeApp/src/commonMain/.../data/TaskAutoScore.kt` | Post-task automatic scoring |

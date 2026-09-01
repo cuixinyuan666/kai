@@ -105,6 +105,8 @@ data class CollaborationModelSnapshot(
 )
 
 interface CollaborationListener {
+    fun onTaskStarted(taskId: String) {}
+
     fun onEvent(event: CollaborationEvent)
 
     fun onNotify(title: String, body: String)

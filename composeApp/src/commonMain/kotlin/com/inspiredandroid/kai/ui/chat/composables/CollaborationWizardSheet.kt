@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.collaboration.CollaborationConfig
 import com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams
 import com.inspiredandroid.kai.speech.SpeechToText
@@ -49,6 +50,8 @@ internal fun CollaborationWizardSheet(
     onDismiss: () -> Unit,
     onStart: (CollaborationWizardParams) -> Unit,
     speechToText: SpeechToText? = null,
+    sttLanguage: String = "zh",
+    onCycleSttLanguage: () -> Unit = {},
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -59,7 +62,7 @@ internal fun CollaborationWizardSheet(
         val wizardFiles = remember { mutableStateListOf<PlatformFile>() }
         var isSpeechListening by remember { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
-        var minScoreText by remember { mutableStateOf("0") }
+        var minScoreText by remember { mutableStateOf("50") }
         var maxWait by remember { mutableIntStateOf(defaultConfig.maxWaitSeconds) }
         var retryCount by remember { mutableIntStateOf(defaultConfig.retryCount) }
         var notifyFailure by remember { mutableStateOf(defaultConfig.notifyOnFailure) }
@@ -100,6 +103,10 @@ internal fun CollaborationWizardSheet(
                         isOptimizingPrompt = isOptimizingPrompt,
                         speechSupported = speechSupported,
                         isSpeechListening = isSpeechListening,
+                        sttLanguage = sttLanguage,
+                        onCycleSttLanguage = onCycleSttLanguage,
+                        showSendButton = false,
+                        chatMode = ChatMode.COLLABORATION,
                         onToggleSpeechInput = {
                             val stt = speechToText
                             if (stt != null) {
@@ -113,7 +120,10 @@ internal fun CollaborationWizardSheet(
                                         }
                                     } else {
                                         isSpeechListening = true
-                                        val lang = if (questionInputText.text.any { it.code > 127 }) "zh" else "en"
+                                        val lang = com.inspiredandroid.kai.speech.SpeechLanguage.resolve(
+                                            questionInputText.text,
+                                            sttLanguage,
+                                        )
                                         stt.startListening(lang).onFailure {
                                             isSpeechListening = false
                                         }
@@ -124,18 +134,18 @@ internal fun CollaborationWizardSheet(
                     )
                 }
                 1 -> {
-                    Text("选择参与协作的模型：仅模型测试分数严格大于该值的模型会收到指令。", style = MaterialTheme.typography.bodyMedium)
+                    Text("选择参与协作的模型：仅模型测试分数 ≥ 该值的模型会收到指令（默认 50）。", style = MaterialTheme.typography.bodyMedium)
                     KaiOutlinedTextField(
                         value = minScoreText,
                         onValueChange = { minScoreText = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("分数门槛（>）") },
+                        label = { Text("分数门槛（≥）") },
                         singleLine = true,
                     )
                 }
                 2 -> {
                     Text("设置运行参数", style = MaterialTheme.typography.titleMedium)
-                    NumberField("单次调用最大等待时间（秒，默认 60）", maxWait) { maxWait = it }
+                    NumberField("单次调用最大等待时间（秒，默认 60；超时指期间内没有任何输出）", maxWait) { maxWait = it }
                     NumberField("模型失败重试次数", retryCount) { retryCount = it }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("模型失败显式提醒", modifier = Modifier.weight(1f))

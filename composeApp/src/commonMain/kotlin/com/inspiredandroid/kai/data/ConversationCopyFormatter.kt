@@ -38,21 +38,28 @@ object ConversationCopyFormatter {
     }
 
     fun copyLevel3(conversation: Conversation, question: String? = null): String {
-        val q = question ?: conversation.metadata().collaborationQuestion ?: firstUserMessage(conversation)
-        val answer = lastAssistantMessage(conversation)
         val title = conversation.title
-        return buildString {
-            append("$title 的回答：")
-            if (answer.isNullOrBlank()) {
-                append("（无回复或调用失败）")
-            } else {
-                append(answer)
-            }
-            if (q.isNotBlank()) {
-                appendLine()
-                append("问题：$q")
-            }
+        val turns = conversation.messages.filter {
+            (it.role == "user" || it.role == "assistant") && it.content.isNotBlank()
         }
+        return buildString {
+            appendLine("【$title】")
+            if (turns.isEmpty()) {
+                val q = question ?: conversation.metadata().collaborationQuestion ?: firstUserMessage(conversation)
+                val answer = lastAssistantMessage(conversation)
+                if (q.isNotBlank()) appendLine("问题：$q")
+                append("回答：")
+                append(if (answer.isNullOrBlank()) "（无回复或调用失败）" else answer)
+            } else {
+                turns.forEach { message ->
+                    when (message.role) {
+                        "user" -> appendLine("用户：${message.content}")
+                        else -> appendLine("模型：${message.content}")
+                    }
+                    appendLine()
+                }
+            }
+        }.trimEnd()
     }
 
     fun copyChatConversation(conversation: Conversation): String {

@@ -246,7 +246,8 @@ fun SettingsScreenContent(
             )
 
             val settingsScrollState = rememberScrollState()
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            Row(Modifier.weight(1f).fillMaxWidth().padding(end = 12.dp)) {
+                Box(Modifier.weight(1f).fillMaxHeight()) {
                 Column(
                     Modifier.fillMaxWidth().verticalScroll(settingsScrollState),
                     horizontalAlignment = CenterHorizontally,
@@ -327,9 +328,10 @@ fun SettingsScreenContent(
 
                     BottomInfo()
                 }
+                }
                 VerticalScrollbarForScroll(
                     scrollState = settingsScrollState,
-                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                    modifier = Modifier.fillMaxHeight(),
                 )
             }
         }

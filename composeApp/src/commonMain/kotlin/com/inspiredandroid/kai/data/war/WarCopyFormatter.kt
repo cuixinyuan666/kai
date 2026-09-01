@@ -18,24 +18,49 @@ object WarCopyFormatter {
             appendLine()
         }
 
-        if (result.aspectResults.isEmpty() && !result.analysisFailed) {
-            appendLine("【结论】全体一致，无分歧方面。")
+        val rounds = result.displayVoteRounds()
+        if (rounds.isEmpty() && !result.analysisFailed) {
+            appendLine("【结论】全体一致，无分歧方案。")
         }
 
-        result.aspectResults.forEach { aspectResult ->
-            val aspect = aspectResult.aspect
-            val valid = aspectResult.validVoteCount
-            appendLine("【${aspect.title}】同意 ${aspectResult.agreeCount}/$valid，不同意 ${aspectResult.disagreeCount}/$valid")
-            appendLine(aspect.description)
-            aspectResult.votes.forEach { vote ->
-                val label = when (vote.choice) {
-                    WarVoteChoice.AGREE.name -> "同意"
-                    WarVoteChoice.DISAGREE.name -> "不同意"
-                    else -> "未表态"
+        if (rounds.isNotEmpty()) {
+            val aspects = rounds.last().aspectResults.map { it.aspect }
+            appendLine("【投票表】")
+            append("轮次")
+            aspects.forEach { append("\t${it.title}") }
+            appendLine()
+            rounds.forEachIndexed { index, round ->
+                val previous = rounds.getOrNull(index - 1)
+                append("第${round.round}轮")
+                aspects.forEach { aspect ->
+                    val current = round.aspectResults.find { it.aspect.id == aspect.id }
+                    val prev = previous?.aspectResults?.find { it.aspect.id == aspect.id }
+                    append("\t${current?.let { WarVoting.cellText(it, prev) } ?: "-"}")
                 }
-                val reasonSuffix = if (vote.reason.isNotBlank()) " — ${vote.reason}" else ""
-                appendLine("  - ${vote.modelLabel}：$label$reasonSuffix")
+                appendLine()
             }
+            appendLine()
+            rounds.forEach { round ->
+                appendLine("【第 ${round.round} 轮明细】")
+                round.aspectResults.forEach { aspectResult ->
+                    appendLine("- ${aspectResult.aspect.title} ${WarVoting.cellText(aspectResult, null)}")
+                    aspectResult.votes.forEach { vote ->
+                        val stance = when (vote.choice) {
+                            WarVoteChoice.AGREE.name -> "同意"
+                            WarVoteChoice.DISAGREE.name -> "不同意"
+                            else -> "未表态"
+                        }
+                        val reasonSuffix = if (vote.reason.isNotBlank()) " — ${vote.reason}" else ""
+                        appendLine("  - ${vote.modelLabel}：$stance$reasonSuffix")
+                    }
+                }
+                appendLine()
+            }
+        }
+
+        if (!result.finalSummary.isNullOrBlank()) {
+            appendLine("【最终汇总】")
+            appendLine(result.finalSummary)
             appendLine()
         }
 

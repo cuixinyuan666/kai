@@ -23,3 +23,9 @@ actual fun VerticalScrollbarForGrid(
     gridState: LazyGridState,
     modifier: Modifier,
 ) {}
+
+@Composable
+actual fun HorizontalScrollbarForScroll(
+    scrollState: ScrollState,
+    modifier: Modifier,
+) {}

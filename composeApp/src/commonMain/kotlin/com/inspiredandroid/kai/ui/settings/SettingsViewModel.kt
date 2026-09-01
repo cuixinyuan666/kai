@@ -9,6 +9,7 @@ import com.inspiredandroid.kai.data.DataRepository
 import com.inspiredandroid.kai.data.ImportSection
 import com.inspiredandroid.kai.data.FreeMode
 import com.inspiredandroid.kai.data.ModelBenchmark
+import com.inspiredandroid.kai.data.TaskAutoScore
 import com.inspiredandroid.kai.data.Service
 import com.inspiredandroid.kai.data.ServiceEntry
 import com.inspiredandroid.kai.data.TaskScheduler
@@ -101,7 +102,7 @@ class SettingsViewModel(
         currentTab = runCatching {
             SettingsTab.valueOf(dataRepository.getSettingsTab() ?: SettingsTab.Services.name)
         }.getOrDefault(SettingsTab.Services),
-        configuredServices = sortedConfigured(buildConfiguredServiceEntries(), false).toImmutableList(),
+        configuredServices = buildConfiguredServiceEntries().toImmutableList(),
         availableServicesToAdd = sortedAvailable(computeAvailableServices(), false).toImmutableList(),
         isDefaultInteractiveMode = dataRepository.isInteractiveModeActive(),
         tools = dataRepository.getToolDefinitions().toImmutableList(),
@@ -358,6 +359,7 @@ class SettingsViewModel(
                 id = mode.modelId,
                 subtitle = mode.modelId.replaceFirstChar { it.uppercase() },
                 isSelected = mode == currentMode,
+                isFreeTier = true,
             )
         }.toImmutableList()
         return ConfiguredServiceEntry(
@@ -369,20 +371,33 @@ class SettingsViewModel(
         )
     }
 
-    private fun buildConfiguredServiceEntries(): List<ConfiguredServiceEntry> =
-        listOf(buildFreeServiceEntry()) + dataRepository.getConfiguredServiceInstances().map { instance ->
-        val service = Service.fromId(instance.serviceId)
-        val models = dataRepository.getInstanceModels(instance.instanceId, service).value
-        ConfiguredServiceEntry(
-            instanceId = instance.instanceId,
-            service = service,
-            apiKey = dataRepository.getInstanceApiKey(instance.instanceId),
-            baseUrl = dataRepository.getInstanceBaseUrl(instance.instanceId, service),
-            selectedModel = models.firstOrNull { it.isSelected },
-            models = models.toImmutableList(),
-            useCustomModel = dataRepository.getInstanceUseCustomModel(instance.instanceId),
-            customModelId = dataRepository.getInstanceCustomModelId(instance.instanceId),
-        )
+    private fun buildConfiguredServiceEntries(): List<ConfiguredServiceEntry> {
+        val free = buildFreeServiceEntry()
+        val configured = dataRepository.getConfiguredServiceInstances().map { instance ->
+            val service = Service.fromId(instance.serviceId)
+            val models = dataRepository.getInstanceModels(instance.instanceId, service).value
+            ConfiguredServiceEntry(
+                instanceId = instance.instanceId,
+                service = service,
+                apiKey = dataRepository.getInstanceApiKey(instance.instanceId),
+                baseUrl = dataRepository.getInstanceBaseUrl(instance.instanceId, service),
+                selectedModel = models.firstOrNull { it.isSelected },
+                models = models.toImmutableList(),
+                useCustomModel = dataRepository.getInstanceUseCustomModel(instance.instanceId),
+                customModelId = dataRepository.getInstanceCustomModelId(instance.instanceId),
+            )
+        }
+        val byId = (listOf(free) + configured).associateBy { it.instanceId }
+        val seen = mutableSetOf<String>()
+        val ordered = mutableListOf<ConfiguredServiceEntry>()
+        for (id in dataRepository.getServiceDisplayOrder()) {
+            val entry = byId[id] ?: continue
+            if (seen.add(id)) ordered.add(entry)
+        }
+        for (entry in listOf(free) + configured) {
+            if (seen.add(entry.instanceId)) ordered.add(entry)
+        }
+        return ordered
     }
 
     private fun computeAvailableServices(): List<Service> {
@@ -404,7 +419,7 @@ class SettingsViewModel(
                 if (preservedStatus != null) entry.copy(connectionStatus = preservedStatus) else entry
             }
             current.copy(
-                configuredServices = sortedConfigured(newEntries).toImmutableList(),
+                configuredServices = newEntries.toImmutableList(),
                 availableServicesToAdd = sortedAvailable(computeAvailableServices()).toImmutableList(),
             )
         }
@@ -438,8 +453,7 @@ class SettingsViewModel(
     }
 
     private fun onReorderServices(orderedIds: List<String>) {
-        val filteredIds = orderedIds.filter { it != "free" }
-        dataRepository.reorderConfiguredServices(filteredIds)
+        dataRepository.reorderConfiguredServices(orderedIds)
         refreshServiceList()
     }
 
@@ -451,6 +465,7 @@ class SettingsViewModel(
     }
 
     private fun refreshInstanceModels(instanceId: String) {
+        if (instanceId == "free") return
         val entry = _state.value.configuredServices.find { it.instanceId == instanceId } ?: return
         val models = dataRepository.getInstanceModels(instanceId, entry.service).value
         _state.update { state ->
@@ -788,6 +803,9 @@ class SettingsViewModel(
     }
 
     private fun onToggleServiceSortReversed(reversed: Boolean) {
+        val sorted = buildConfiguredServiceEntries().sortedBy { it.service.displayName.lowercase() }
+        val ordered = if (reversed) sorted.asReversed() else sorted
+        dataRepository.reorderConfiguredServices(ordered.map { it.instanceId })
         _state.update { it.copy(serviceSortReversed = reversed) }
         refreshServiceList()
     }
@@ -899,13 +917,15 @@ class SettingsViewModel(
                         }
                         val elapsedMs = started.elapsedNow().inWholeMilliseconds.coerceAtLeast(0L)
 
-                        val benchmark = scoreBenchmark(
-                            modelKey = "${target.serviceId}::${target.modelId}",
-                            modelLabel = target.label,
-                            serviceId = target.serviceId,
-                            response = response,
-                            elapsedMs = elapsedMs,
-                        )
+        val benchmark = TaskAutoScore.compute(
+            modelKey = "${target.serviceId}::${target.modelId}",
+            modelLabel = target.label,
+            serviceId = target.serviceId,
+            response = response,
+            elapsedMs = elapsedMs,
+            attempts = 1,
+            failed = response.isBlank(),
+        )
                         dataRepository.upsertModelBenchmark(benchmark)
                         // MutableStateFlow.update 是原子的：线程安全地推进进度
                         _state.update {
@@ -963,62 +983,6 @@ class SettingsViewModel(
         }
     }
 
-    private fun scoreBenchmark(
-        modelKey: String,
-        modelLabel: String,
-        serviceId: String,
-        response: String,
-        elapsedMs: Long,
-    ): ModelBenchmark {
-        val charCount = response.length
-        // 模型返回失败（无有效响应）时直接为 0 分：所有分项与总分一律 0，
-        // 不允许通过"快速失败"在速度项上获利。
-        if (charCount <= 0) {
-            return ModelBenchmark(
-                modelKey = modelKey,
-                modelLabel = modelLabel,
-                serviceId = serviceId,
-                totalScore = 0.0,
-                completion = 0.0,
-                speed = 0.0,
-                responseSpeed = 0.0,
-                wordCount = 0.0,
-                elapsedMs = elapsedMs,
-                charCount = 0,
-                testedAt = kotlin.time.Clock.System.now().toEpochMilliseconds(),
-            )
-        }
-        // 完成度：非空响应得满分，否则 0
-        val completion = if (charCount > 0) 100.0 else 0.0
-        // 速度：60s 超时，线性映射 0..100（越快越高）
-        val speed = ((60_000 - elapsedMs).toDouble() / 60_000).coerceIn(0.0, 1.0) * 100.0
-        // 响应速度：字符/秒，封顶 50 cps → 100 分
-        val charsPerSec = if (elapsedMs > 0) charCount.toDouble() / (elapsedMs / 1000.0) else 0.0
-        val responseSpeed = (charsPerSec / 50.0).coerceIn(0.0, 1.0) * 100.0
-        // 字数：越多越好，封顶 500 字 → 100 分
-        val wordCount = (charCount / 500.0).coerceIn(0.0, 1.0) * 100.0
-
-        val weights = ModelBenchmark.WEIGHTS
-        val total = completion * weights["completion"]!! +
-            speed * weights["speed"]!! +
-            responseSpeed * weights["responseSpeed"]!! +
-            wordCount * weights["wordCount"]!!
-
-        return ModelBenchmark(
-            modelKey = modelKey,
-            modelLabel = modelLabel,
-            serviceId = serviceId,
-            totalScore = total.coerceIn(0.0, 100.0),
-            completion = completion,
-            speed = speed,
-            responseSpeed = responseSpeed,
-            wordCount = wordCount,
-            elapsedMs = elapsedMs,
-            charCount = charCount,
-            testedAt = kotlin.time.Clock.System.now().toEpochMilliseconds(),
-        )
-    }
-
     private data class BenchmarkTarget(
         val instanceId: String,
         val serviceId: String,
@@ -1026,14 +990,6 @@ class SettingsViewModel(
         val label: String,
     )
     // endregion
-
-    private fun sortedConfigured(entries: List<ConfiguredServiceEntry>, reversed: Boolean = _state.value.serviceSortReversed): List<ConfiguredServiceEntry> {
-        val free = entries.firstOrNull { it.instanceId == "free" }
-        val rest = entries.filter { it.instanceId != "free" }
-        val sorted = rest.sortedBy { it.service.displayName }
-        val ordered = if (reversed) sorted.asReversed() else sorted
-        return if (free != null) listOf(free) + ordered else ordered
-    }
 
     private fun sortedAvailable(services: List<Service>, reversed: Boolean = _state.value.serviceSortReversed): List<Service> {
         val sorted = services.sortedBy { it.displayName }

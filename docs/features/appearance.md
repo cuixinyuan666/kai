@@ -1,6 +1,6 @@
 # Appearance
 
-**Last verified:** 2026-07-18
+**Last verified:** 2026-09-01
 
 Kai has a four-way theme picker — **System**, **Light**, **Dark**, and **OLED** — exposed in Settings on every platform. The default is System, which follows the operating system's dark/light preference. The other three force a specific theme regardless of system state. Dark uses a soft dark background (`#121212`) with slightly lighter surfaces (`#1E1E1E`); OLED flattens the background and the lowest surface tier to pure black (`#000000`) for users who want to save power on OLED panels.
 
@@ -14,6 +14,9 @@ Cards, dialogs, bottom sheets, and menus stay visually lifted in either dark var
 - **OLED**: forces dark + pure-black override. `background`, `surface`, and `surfaceContainerLowest` render pure black. The elevated `surfaceContainer*` tiers are unchanged so cards and menus stay visible against black.
 - **Material You (Android 12+)**: wallpaper-derived accent colors (`primary`, `secondary`, `tertiary`) always apply. When OLED is selected, the black override is layered on top of the dynamic dark scheme so accents and buttons continue to track the wallpaper.
 - **Reactivity**: changing the theme picker recomposes the theme immediately without an app restart.
+- **UI scale**: desktop applies the user scale on top of a **frozen** first-frame density so opening dialogs or sheets does not re-read fluctuating OS DPI and make the whole window jump in size. Change scale from Settings → General.
+- **Empty-chat CUI**: letter size is 176 sp; the animated double-dot that stands in for the `i` tittle matches the standalone 52 dp double-dot icon and sits on the letter stem.
+- **Windows title bar**: on Windows the native caption is replaced with an in-app bar that uses the same `background` / `onBackground` as the rest of the theme, so min/max/close sit on Dark, OLED, Light, or Eye Care instead of a forced white OS chrome. Maximize snaps to the **working area** (screen minus the taskbar) instead of covering the taskbar. Mac and Linux keep the system window decorations.
 
 The picker exists on every platform because system theme detection is unreliable on some desktop window systems (notably Linux/Wayland), so users there need an explicit override.
 
@@ -32,4 +35,7 @@ When adding new surfaces in dark mode, **do not** bind fills to `surface` if the
 | `androidApp/.../MainActivity.kt` | Android entry — supplies dynamic-color light/dark schemes; the resolved `isDarkTheme` (from `themeMode` + system) drives the system-bar style |
 | `androidApp/.../res/values-night/styles.xml` | Pre-Compose window background set to `#FF121212` to match the default dark frame |
 | `composeApp/.../iosMain/.../MainViewController.kt` | iOS entry — uses common `App` defaults |
-| `composeApp/.../desktopMain/.../main.kt` | Desktop entry — uses common `App` defaults; also configures HiDPI hints and an initial 1280×800 `WindowState` so the window opens at a usable size on Linux/Wayland |
+| `composeApp/.../desktopMain/.../main.kt` | Desktop entry — uses common `App` defaults; HiDPI hints; the window opens fitted to the working area (not over the taskbar) |
+| `composeApp/.../desktopMain/.../PlatformWindowTheme.jvm.kt` | Windows in-app title bar (same colors as the current theme) plus DWM caption/border attributes; maximize toggles working-area fit |
+| `composeApp/.../desktopMain/.../desktop/DesktopWindowTheme.kt` | Native HWND lookup and `DwmSetWindowAttribute` for immersive dark mode / caption color |
+| `composeApp/.../ui/components/CuiBranding.kt` | Empty-state CUI wordmark |

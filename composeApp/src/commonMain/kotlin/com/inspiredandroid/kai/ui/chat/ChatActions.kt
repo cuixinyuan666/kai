@@ -61,4 +61,5 @@ data class ChatActions(
     val clearPendingPromptText: () -> Unit,
     /** 用户消息“重新发送”：截断到该消息之前，再以原文重新提问。 */
     val resendUserMessage: (messageId: String, text: String) -> Unit,
+    val openWarModelMessage: (conversationId: String, messageId: String) -> Unit,
 )

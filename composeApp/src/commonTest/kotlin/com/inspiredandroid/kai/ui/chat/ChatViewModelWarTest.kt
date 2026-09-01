@@ -106,4 +106,21 @@ class ChatViewModelWarTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    @Test
+    fun `openWarModelMessage keeps result overlay and highlights message`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.state.test {
+            advanceUntilIdle()
+            skipItems(1)
+            viewModel.state.value.actions.openWarResultView("war-task-1")
+            viewModel.state.value.actions.openWarModelMessage("model-1", "msg-1")
+            advanceUntilIdle()
+            val state = expectMostRecentItem()
+            assertEquals("war-task-1", state.warResultViewTaskId)
+            assertEquals("model-1", state.collaborationModelViewId)
+            assertEquals("msg-1", state.collaborationHighlightMessageId)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
 }

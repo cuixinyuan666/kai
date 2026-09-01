@@ -56,11 +56,11 @@ data class ServiceCredentials(
     val baseUrl: String = "",
 )
 
-/** Applies a per-request override of the client-wide timeouts, when the caller supplied one. */
+/** Idle timeout: no bytes for [requestTimeoutMs]. Total request may run longer if data is flowing. */
 private fun HttpRequestBuilder.applyTimeout(requestTimeoutMs: Long?) {
     requestTimeoutMs ?: return
     timeout {
-        requestTimeoutMillis = requestTimeoutMs
+        requestTimeoutMillis = 24L * 60 * 60 * 1000
         socketTimeoutMillis = requestTimeoutMs
     }
 }

@@ -6,3 +6,7 @@ import androidx.compose.runtime.Composable
 actual fun SyncPlatformWindowTheme() {
     // Wasm 无原生窗口标题栏。
 }
+
+@Composable
+actual fun PlatformTitleBar() {
+}

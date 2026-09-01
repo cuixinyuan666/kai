@@ -1,5 +1,6 @@
 import java.io.File
 import java.net.URI
+import java.security.MessageDigest
 import java.util.zip.ZipInputStream
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
@@ -260,9 +261,99 @@ tasks.register("downloadVoskModels") {
     }
 }
 
+val PWSH7_VERSION = "7.6.5"
+val PWSH7_ZIP_URL =
+    "https://github.com/PowerShell/PowerShell/releases/download/v7.6.5/PowerShell-7.6.5-win-x64.zip"
+val PWSH7_SHA256 = "32eb8f6cdce08f86e987d625a2733e54ac3e289ae7e1621b14c0b5bcec2434ea"
+
+fun sha256Hex(file: File): String {
+    val md = MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { input ->
+        val buf = ByteArray(8192)
+        while (true) {
+            val n = input.read(buf)
+            if (n <= 0) break
+            md.update(buf, 0, n)
+        }
+    }
+    return md.digest().joinToString("") { byte -> "%02x".format(byte) }
+}
+
+fun unpackZipSafely(zipFile: File, destDir: File) {
+    destDir.mkdirs()
+    val destCanon = destDir.canonicalFile
+    ZipInputStream(zipFile.inputStream()).use { zis ->
+        var entry = zis.nextEntry
+        while (entry != null) {
+            val outFile = File(destDir, entry.name).canonicalFile
+            val prefix = destCanon.path + File.separator
+            if (outFile != destCanon && !outFile.path.startsWith(prefix)) {
+                throw GradleException("Refusing zip entry outside destination: ${entry.name}")
+            }
+            if (entry.isDirectory) {
+                outFile.mkdirs()
+            } else {
+                outFile.parentFile?.mkdirs()
+                outFile.outputStream().use { zis.copyTo(it) }
+            }
+            zis.closeEntry()
+            entry = zis.nextEntry
+        }
+    }
+}
+
+tasks.register("downloadPwsh7") {
+    group = "desktop"
+    description = "Download portable PowerShell 7 into Windows appResources"
+    val pwshDir = layout.projectDirectory.dir("appResources/windows/pwsh")
+    outputs.dir(pwshDir)
+    onlyIf { org.gradle.internal.os.OperatingSystem.current().isWindows }
+    doLast {
+        val targetDir = pwshDir.asFile
+        val versionMarker = File(targetDir, "KAI_PWSH_VERSION")
+        val exe = File(targetDir, "pwsh.exe")
+        if (exe.isFile && versionMarker.isFile && versionMarker.readText().trim() == PWSH7_VERSION) {
+            logger.lifecycle("PowerShell $PWSH7_VERSION already present")
+            return@doLast
+        }
+        if (targetDir.exists()) {
+            targetDir.deleteRecursively()
+        }
+        targetDir.mkdirs()
+        logger.lifecycle("Downloading PowerShell $PWSH7_VERSION (win-x64 portable, ~100 MB)")
+        val zipFile = File(targetDir.parentFile, "PowerShell-$PWSH7_VERSION-win-x64.zip")
+        URI(PWSH7_ZIP_URL).toURL().openStream().use { input ->
+            zipFile.outputStream().use { output -> input.copyTo(output) }
+        }
+        val actual = sha256Hex(zipFile)
+        if (actual != PWSH7_SHA256) {
+            zipFile.delete()
+            throw GradleException("PowerShell zip SHA-256 mismatch: expected $PWSH7_SHA256 got $actual")
+        }
+        unpackZipSafely(zipFile, targetDir)
+        zipFile.delete()
+        if (!exe.isFile) {
+            val nested = targetDir.walkTopDown().firstOrNull { it.name.equals("pwsh.exe", ignoreCase = true) }
+                ?: throw GradleException("pwsh.exe missing after unpacking PowerShell $PWSH7_VERSION")
+            nested.parentFile.listFiles()?.forEach { child ->
+                val dest = File(targetDir, child.name)
+                if (dest.canonicalFile != child.canonicalFile) {
+                    child.copyRecursively(dest, overwrite = true)
+                }
+            }
+        }
+        if (!File(targetDir, "pwsh.exe").isFile) {
+            throw GradleException("Failed to unpack PowerShell $PWSH7_VERSION")
+        }
+        versionMarker.writeText(PWSH7_VERSION)
+        logger.lifecycle("PowerShell $PWSH7_VERSION ready at ${targetDir.absolutePath}")
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "com.inspiredandroid.kai.MainKt"
+        jvmArgs += listOf("-Dfile.encoding=UTF-8", "-Dsun.jnu.encoding=UTF-8")
 
         buildTypes.release.proguard {
             configurationFiles.from(
@@ -298,8 +389,14 @@ compose.desktop {
 // it and strips the META-INF signatures, causing "SHA-256 digest error" at
 // runtime. After ProGuard finishes, replace the processed jar with the original.
 afterEvaluate {
-    tasks.named("prepareAppResources") { dependsOn("downloadVoskModels") }
-    tasks.named("run") { dependsOn("downloadVoskModels") }
+    tasks.named("prepareAppResources") {
+        dependsOn("downloadVoskModels")
+        dependsOn("downloadPwsh7")
+    }
+    tasks.named("run") {
+        dependsOn("downloadVoskModels")
+        dependsOn("downloadPwsh7")
+    }
     tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
         doLast {
             val proguardDir =

@@ -125,6 +125,7 @@ data class ChatUiState(
     val warSummary: String? = null,
     val warNotification: String? = null,
     val warResultViewTaskId: String? = null,
+    val collaborationHighlightMessageId: String? = null,
 ) {
     val heartbeatConversationId: String?
         get() = savedConversations.firstOrNull { it.isHeartbeat }?.id

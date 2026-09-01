@@ -30,6 +30,7 @@ interface DataRepository {
     fun addConfiguredService(serviceId: String): ServiceInstance
     fun removeConfiguredService(instanceId: String)
     fun reorderConfiguredServices(orderedInstanceIds: List<String>)
+    fun getServiceDisplayOrder(): List<String>
     fun getServiceEntries(): List<ServiceEntry>
     fun isFreeFallbackEnabled(): Boolean
     fun setFreeFallbackEnabled(enabled: Boolean)
@@ -257,6 +258,8 @@ interface DataRepository {
 
     fun updateCollaborationModelStatus(conversationId: String, status: CollaborationModelStatus, response: String?)
 
+    fun completeTaskConversation(taskId: String, status: CollaborationModelStatus)
+
     suspend fun createWarTask(
         question: String,
         params: com.inspiredandroid.kai.data.war.WarWizardParams,
@@ -269,11 +272,14 @@ interface DataRepository {
         folderTitle: String,
         question: String,
         params: com.inspiredandroid.kai.data.war.WarWizardParams,
+        isSummaryModel: Boolean = false,
     ): String
 
     suspend fun createWarResultConversation(taskId: String): String
 
     fun saveWarTaskResult(taskId: String, result: com.inspiredandroid.kai.data.war.WarTaskResult)
+
+    fun appendConversationExchange(conversationId: String, userContent: String, assistantContent: String)
 
     // 协作模式配置 / 聊天模式
     fun getChatMode(): ChatMode

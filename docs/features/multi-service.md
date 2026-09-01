@@ -1,8 +1,8 @@
 # Multi-Service
 
-**Last verified:** 2026-08-12
+**Last verified:** 2026-08-31
 
-Kai supports 29 LLM providers (plus a built-in Free tier). Each provider uses one of three API formats: **OpenAI-compatible** (most services), **Gemini native**, or **Anthropic native** -- plus **LiteRT on-device** for local inference. Users can configure multiple service instances, reorder them, and Kai automatically falls back through the chain on failure.
+Kai supports 29 LLM providers (plus a built-in Free tier). Each provider uses one of three API formats: **OpenAI-compatible** (most services), **Gemini native**, or **Anthropic native** -- plus **LiteRT on-device** for local inference. Users can configure multiple service instances, reorder them (including APP-FREE), and Kai automatically falls back through the chain on failure. Keyless providers (Kilo, OVH, Pollinations, AI Horde, APP-FREE) show a **NO NEED KEY** badge. SiliconFlow, which was added from the FreeLLMAPI catalog, shows a **FreeLLMAPI** badge; other providers do not.
 
 ## Concepts
 
@@ -25,12 +25,9 @@ A configured connection to a service. Users can add multiple instances of the sa
 
 ### Free Tier
 
-A built-in service that requires no API key. Free is never shown in the service picker — it is used as:
+APP-FREE is listed like other services in Settings and the chat model dropdown: one **总类** (`APP-FREE`) with **Fast / Expert** branches, a **NO NEED KEY** badge, and the same model-picker / score logic. Its position in the service list can be dragged like any other source. It is still used as last-resort fallback when "Use as fallback" is enabled, unless the user moved it to the first slot.
 
-- The sole service when no other services are configured
-- A last-resort fallback when "Use as fallback" is enabled (default)
-
-When Free is the only path and the user hits Free FAST/EXPERT rate or quota limits, chat shows a free-provider signup panel (Groq, Cerebras, Gemini, OpenRouter, Ollama Cloud) so they can open an API-key page and continue with a personal free tier. See [chat.md](chat.md).
+When APP-FREE is the only path and the user hits Free FAST/EXPERT rate or quota limits, chat shows a free-provider signup panel (Groq, Cerebras, Gemini, OpenRouter, Ollama Cloud) so they can open an API-key page and continue with a personal free tier. See [chat.md](chat.md).
 
 ## Fallback Chain
 
@@ -81,7 +78,10 @@ The **OpenAI-Compatible API** service supports a custom base URL, defaulting to 
 | AIHubMix | `aihubmix` | Yes | OpenAI-compatible |
 | Deep Infra | `deepinfra` | Yes | OpenAI-compatible |
 | Fireworks AI | `fireworksai` | Yes | OpenAI-compatible |
-| OpenCode | `opencode` | Yes | OpenAI-compatible |
+| OpenCode API | `opencode` | Yes | OpenAI-compatible (Zen gateway). Distinct from **OpenCode 终端**. |
+| OpenCode 终端 | `opencode-terminal` | Yes | Same Zen gateway as OpenCode API, with thinking / plan / build controls |
+| SiliconFlow | `siliconflow` | Yes | OpenAI-compatible (FreeLLMAPI source) |
+| SenseNova | `sensenova` | Yes | OpenAI-compatible. API keys: [platform.sensenova.cn/console/keys](https://platform.sensenova.cn/console/keys) |
 | Public AI | `publicai` | Yes | OpenAI-compatible |
 | AI Horde | `aihorde` | Yes (anonymous key `0000000000` allowed at lowest priority) | OpenAI-compatible (via [oai.aihorde.net](https://oai.aihorde.net/); model list is the set of text models with online volunteer workers — availability and latency vary) |
 | Perplexity | `perplexity` | Yes | OpenAI-compatible (Sonar; ships with a curated default model list — no authenticated `/models` endpoint for Sonar; connection validation probes the chat endpoint with an incomplete body to check the API key) |

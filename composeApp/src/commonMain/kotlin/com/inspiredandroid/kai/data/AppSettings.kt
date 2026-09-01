@@ -689,6 +689,7 @@ class AppSettings(internal val settings: Settings) {
         const val KEY_NOTIFICATIONS_STORE = "notifications_store"
         const val KEY_NOTIFICATIONS_SYNC_STATE = "notifications_sync_state"
         const val KEY_CONFIGURED_SERVICES = "configured_services"
+        const val KEY_SERVICE_DISPLAY_ORDER = "service_display_order"
         const val KEY_FREE_FALLBACK_ENABLED = "free_fallback_enabled"
         const val KEY_FREE_MODE = "free_mode"
         const val KEY_FREE_SERVICE_PRIMARY = "free_service_primary"
@@ -698,6 +699,7 @@ class AppSettings(internal val settings: Settings) {
         const val KEY_INSTANCE_MIGRATION_COMPLETE = "instance_migration_complete_v1"
         const val KEY_BASE_URL_V1_MIGRATION_COMPLETE = "base_url_v1_migration_complete"
         const val KEY_CUSTOM_MODEL_MIGRATION_COMPLETE = "custom_model_migration_complete_v1"
+        const val KEY_IMPORTED_API_SEED_COMPLETE = "imported_api_seed_complete_v2"
 
         const val KEY_SPLINTERLANDS_ENABLED = "splinterlands_enabled"
         const val KEY_SPLINTERLANDS_ACCOUNT = "splinterlands_account"

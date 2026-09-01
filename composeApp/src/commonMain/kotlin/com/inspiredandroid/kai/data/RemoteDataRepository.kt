@@ -9,6 +9,7 @@ import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.collaboration.CollaborationConfig
 import com.inspiredandroid.kai.data.collaboration.CollaborationWizardParams
 import com.inspiredandroid.kai.data.collaboration.ModelRef
+import com.inspiredandroid.kai.data.war.WarPhase
 import com.inspiredandroid.kai.data.war.WarTaskResult
 import com.inspiredandroid.kai.data.war.encodeJson
 import com.inspiredandroid.kai.data.providers.buildAnthropicMessages
@@ -74,11 +75,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.offsetAt
 import kotlinx.datetime.toLocalDateTime
@@ -232,7 +233,9 @@ class RemoteDataRepository(
         val current = appSettings.getConfiguredServiceInstances().toMutableList()
         current.add(instance)
         appSettings.setConfiguredServiceInstances(current)
-        appSettings.setFreeServicePrimary(false)
+        val order = appSettings.getServiceDisplayOrder().toMutableList()
+        if (instance.instanceId !in order) order.add(instance.instanceId)
+        appSettings.setServiceDisplayOrder(order)
         return instance
     }
 
@@ -240,21 +243,43 @@ class RemoteDataRepository(
         val current = appSettings.getConfiguredServiceInstances().toMutableList()
         current.removeAll { it.instanceId == instanceId }
         appSettings.setConfiguredServiceInstances(current)
+        appSettings.setServiceDisplayOrder(appSettings.getServiceDisplayOrder().filter { it != instanceId })
         appSettings.removeInstanceSettings(instanceId)
         modelsByInstance.remove(instanceId)
     }
 
     override fun reorderConfiguredServices(orderedInstanceIds: List<String>) {
+        val distinctIds = orderedInstanceIds.distinct()
         val current = appSettings.getConfiguredServiceInstances()
         val byId = current.associateBy { it.instanceId }
-        val reordered = orderedInstanceIds.mapNotNull { byId[it] }
-        appSettings.setConfiguredServiceInstances(reordered)
+        val reordered = distinctIds.filter { it != "free" }.mapNotNull { byId[it] }
+        val missing = current.filter { inst -> reordered.none { it.instanceId == inst.instanceId } }
+        appSettings.setConfiguredServiceInstances(reordered + missing)
+        if ("free" in distinctIds) {
+            appSettings.setServiceDisplayOrder(distinctIds)
+        } else {
+            val apiOrder = (reordered + missing).map { it.instanceId }
+            val prev = appSettings.getServiceDisplayOrder()
+            val freeIndex = prev.indexOf("free")
+            val display = if (freeIndex < 0) {
+                apiOrder + "free"
+            } else {
+                apiOrder.toMutableList().apply { add(freeIndex.coerceIn(0, size), "free") }
+            }
+            appSettings.setServiceDisplayOrder(display, updatePrimary = false)
+        }
     }
+
+    override fun getServiceDisplayOrder(): List<String> = appSettings.getServiceDisplayOrder()
 
     override fun getServiceEntries(): List<ServiceEntry> {
         val freeMode = appSettings.getFreeMode()
         val freeOptions = FreeMode.entries.map { mode ->
-            ServiceModelOption(mode.modelId, mode.modelId.replaceFirstChar { it.uppercase() })
+            ServiceModelOption(
+                id = mode.modelId,
+                label = mode.modelId.replaceFirstChar { it.uppercase() },
+                isFreeTier = true,
+            )
         }
         val freeEntry = ServiceEntry(
             instanceId = "free",
@@ -270,7 +295,11 @@ class RemoteDataRepository(
                 appSettings.getSelectedModelId(service)
             }
             val options = getInstanceModels(instance.instanceId, service).value.map { m ->
-                ServiceModelOption(m.id, m.displayName ?: m.id)
+                ServiceModelOption(
+                    id = m.id,
+                    label = m.displayName ?: m.id,
+                    isFreeTier = m.isFreeTier || FreeTierModels.isFreeTier(service, m.id),
+                )
             }
             ServiceEntry(
                 instanceId = instance.instanceId,
@@ -281,7 +310,23 @@ class RemoteDataRepository(
                 modelOptions = options,
             )
         }
-        return listOf(freeEntry) + configured
+        return (listOf(freeEntry) + configured).inDisplayOrder { it.instanceId }
+    }
+
+    private fun <T> List<T>.inDisplayOrder(idOf: (T) -> String): List<T> {
+        val order = appSettings.getServiceDisplayOrder()
+        val byId = associateBy(idOf)
+        val seen = mutableSetOf<String>()
+        val out = ArrayList<T>(size)
+        for (id in order) {
+            val item = byId[id] ?: continue
+            if (seen.add(id)) out.add(item)
+        }
+        for (item in this) {
+            val id = idOf(item)
+            if (seen.add(id)) out.add(item)
+        }
+        return out
     }
 
     override fun isFreeFallbackEnabled(): Boolean = appSettings.isFreeFallbackEnabled()
@@ -413,8 +458,6 @@ class RemoteDataRepository(
                 mapAnthropicModels(requests.getAnthropicModels(creds).getOrThrow().data, selectedModelId)
             }
 
-            Service.Free -> { /* No model listing */ }
-
             Service.LiteRT -> {
                 val engine = localInferenceEngine ?: return
                 val selectedModelId = appSettings.getInstanceModelId(instanceId)
@@ -446,6 +489,7 @@ class RemoteDataRepository(
                             subtitle = it.subtitle,
                             descriptionRes = it.descriptionRes,
                             isSelected = it.id == selectedModelId,
+                            isFreeTier = FreeTierModels.isFreeTier(service, it.id),
                         )
                     }
                     updateModelsForInstance(instanceId, models, service)
@@ -926,24 +970,9 @@ class RemoteDataRepository(
         }
         // Process every attached file: classify, compress/encode, and build an Attachment.
         // readBytes() is suspend, so this happens before the StateFlow.update block.
-        // 目录（文件夹）会被递归展开为其中的受支持文件；目录内不支持或过大的子文件将被
-        // 跳过（不整体报错），顶层直接添加的文件仍保持原有强校验语义。
-        val attachments = files.flatMap { file ->
-            if (file.isDirectory()) {
-                val collected = mutableListOf<Attachment>()
-                suspend fun walk(current: PlatformFile) {
-                    if (current.isDirectory()) {
-                        runCatching { current.list() }.getOrDefault(emptyList()).forEach { walk(it) }
-                    } else {
-                        runCatching { fileToAttachmentOrNull(current) }.getOrNull()?.let { collected.add(it) }
-                    }
-                }
-                walk(file)
-                collected
-            } else {
-                listOf(fileToAttachmentOrThrow(file))
-            }
-        }.toImmutableList()
+        // Directories are expanded with junk-dir skips and a size cap; unsupported
+        // or oversized children are skipped.
+        val attachments = buildAttachmentsFromFiles(files).toImmutableList()
 
         if (question != null) {
             chatHistory.update {
@@ -994,6 +1023,7 @@ class RemoteDataRepository(
                 // No retry wrapper here: each network call retries inside askWithService.
                 // Retrying the whole call would re-enter the tool loop against a chat
                 // history already mutated by the failed attempt.
+                val started = kotlin.time.TimeSource.Monotonic.markNow()
                 val turn = try {
                     askWithService(entry.service, messages, systemPrompt, entry.instanceId)
                 } catch (e: Exception) {
@@ -1024,6 +1054,17 @@ class RemoteDataRepository(
                     }
                 }
                 saveCurrentConversation()
+                val modelId = appSettings.getInstanceEffectiveModelId(entry.instanceId).ifEmpty { currentModelId() }
+                TaskAutoScore.record(
+                    repository = this,
+                    serviceId = entry.service.id,
+                    modelId = modelId,
+                    modelLabel = "${entry.service.displayName} / $modelId",
+                    response = turn.content,
+                    elapsedMs = started.elapsedNow().inWholeMilliseconds,
+                    attempts = index + 1,
+                    failed = false,
+                )
                 return
             }
 
@@ -1714,15 +1755,10 @@ class RemoteDataRepository(
     }
 
     override fun restoreCurrentConversation() {
-        // One-time migration for existing users: pin the latest conversation as the new
-        // "current" pointer so the upgrade is non-disruptive.
+        // One-time migration: mark the current-conversation pointer as migrated without
+        // auto-loading the latest chat. Launch always opens an empty CUI screen.
         if (!appSettings.isCurrentConversationMigrated()) {
-            val latest = savedConversations.value.maxByOrNull { it.updatedAt }
-            if (latest != null) {
-                loadConversation(latest.id)
-            }
             appSettings.markCurrentConversationMigrated()
-            return
         }
 
         // Already-loaded guard (covers re-entry from refreshSettings)
@@ -2267,7 +2303,7 @@ class RemoteDataRepository(
     ): String {
         val conversation = savedConversations.value.find { it.id == conversationId } ?: return ""
         val localHistory = MutableStateFlow(conversation.messages.map { messageToHistory(it) })
-        val attachments = buildAttachmentsFromFiles(files).toImmutableList()
+        val attachments = buildAttachmentsFromFiles(files, conversationId).toImmutableList()
         val needsUserMessage = localHistory.value.lastOrNull()?.let { last ->
             last.role != History.Role.USER || last.content != question
         } ?: true
@@ -2305,11 +2341,10 @@ class RemoteDataRepository(
             turn.content
         }
 
-        val content = if (timeoutMs > 0) {
-            withTimeoutOrNull(timeoutMs) { execute() } ?: ""
-        } else {
-            execute()
-        }
+        // Total wall-clock timeout is not applied: maxWait is an idle/no-output timeout
+        // enforced as HTTP socketTimeout on the request. Streaming that already produced
+        // bytes is allowed to finish.
+        val content = execute()
 
         persistConversationHistory(conversationId, localHistory.value, conversation)
         return content
@@ -2321,20 +2356,89 @@ class RemoteDataRepository(
         return Service.fromId(instance.serviceId)
     }
 
-    private suspend fun buildAttachmentsFromFiles(files: List<PlatformFile>): List<Attachment> = files.flatMap { file ->
-        if (file.isDirectory()) {
-            val collected = mutableListOf<Attachment>()
-            suspend fun walk(current: PlatformFile) {
-                if (current.isDirectory()) {
-                    runCatching { current.list() }.getOrDefault(emptyList()).forEach { walk(it) }
+    private suspend fun buildAttachmentsFromFiles(
+        files: List<PlatformFile>,
+        conversationId: String = "",
+    ): List<Attachment> {
+        val t0 = Clock.System.now().toEpochMilliseconds()
+        var visited = 0
+        var attachedCount = 0
+        var skipped = 0
+        val dirFlags = files.joinToString(",") { f ->
+            "${f.name.take(48)}:${runCatching { f.isDirectory() }.getOrDefault(false)}"
+        }
+        return try {
+            var inlineBytes = 0
+            val result = files.flatMap { file ->
+                val isDir = runCatching { file.isDirectory() }.getOrDefault(false)
+                if (isDir) {
+                    val collected = mutableListOf<Attachment>()
+                    suspend fun walk(current: PlatformFile, rel: String) {
+                        kotlin.coroutines.coroutineContext.ensureActive()
+                        if (attachedCount >= FolderAttachments.MAX_INLINE_FILES ||
+                            inlineBytes >= FolderAttachments.MAX_INLINE_BYTES
+                        ) {
+                            skipped++
+                            return
+                        }
+                        visited++
+                        val isCurrentDir = try {
+                            current.isDirectory()
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            false
+                        }
+                        if (isCurrentDir) {
+                            if (rel.isNotEmpty() && FolderAttachments.isSkippedDirectoryName(current.name)) return
+                            val children = try {
+                                current.list()
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                emptyList()
+                            }
+                            for (child in children) {
+                                val childRel = if (rel.isEmpty()) child.name else "$rel/${child.name}"
+                                walk(child, childRel)
+                            }
+                        } else {
+                            if (attachedCount >= FolderAttachments.MAX_INLINE_FILES ||
+                                inlineBytes >= FolderAttachments.MAX_INLINE_BYTES
+                            ) {
+                                skipped++
+                                return
+                            }
+                            val att = try {
+                                fileToAttachmentOrNull(current)?.copy(fileName = rel.ifBlank { current.name })
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                null
+                            }
+                            if (att != null) {
+                                collected.add(att)
+                                attachedCount++
+                                inlineBytes += att.data.length
+                            } else {
+                                skipped++
+                            }
+                        }
+                    }
+                    walk(file, "")
+                    collected
                 } else {
-                    runCatching { fileToAttachmentOrNull(current) }.getOrNull()?.let { collected.add(it) }
+                    visited++
+                    listOf(fileToAttachmentOrThrow(file))
                 }
             }
-            walk(file)
-            collected
-        } else {
-            listOf(fileToAttachmentOrThrow(file))
+            val elapsed = Clock.System.now().toEpochMilliseconds() - t0
+            val payloadChars = result.sumOf { it.data.length }
+            result
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw e
         }
     }
 
@@ -2463,6 +2567,15 @@ class RemoteDataRepository(
         conversationStorage.saveConversation(updated)
     }
 
+    override fun completeTaskConversation(taskId: String, status: CollaborationModelStatus) {
+        val conversation = savedConversations.value.find { it.id == taskId } ?: return
+        val updated = conversation
+            .withMetadata(conversation.metadata().copy(status = status.name))
+            .copy(updatedAt = Clock.System.now().toEpochMilliseconds())
+        conversationStorage.saveConversation(updated)
+        ensureStoredHierarchy()
+    }
+
     override suspend fun createWarTask(
         question: String,
         params: com.inspiredandroid.kai.data.war.WarWizardParams,
@@ -2504,6 +2617,7 @@ class RemoteDataRepository(
         folderTitle: String,
         question: String,
         params: com.inspiredandroid.kai.data.war.WarWizardParams,
+        isSummaryModel: Boolean,
     ): String {
         val now = Clock.System.now().toEpochMilliseconds()
         val id = Uuid.random().toString()
@@ -2518,6 +2632,7 @@ class RemoteDataRepository(
             notifyOnFailure = params.notifyOnFailure,
             notifyOnComplete = params.notifyOnComplete,
             taskMode = "war",
+            isSummaryModel = isSummaryModel,
         )
         val conversation = Conversation(
             id = id,
@@ -2555,7 +2670,11 @@ class RemoteDataRepository(
     override fun saveWarTaskResult(taskId: String, result: WarTaskResult) {
         val task = savedConversations.value.find { it.id == taskId } ?: return
         val meta = task.metadata().copy(
-            status = CollaborationModelStatus.COMPLETED.name,
+            status = if (result.phase == WarPhase.DONE.name || result.phase == WarPhase.FAILED.name) {
+                CollaborationModelStatus.COMPLETED.name
+            } else {
+                CollaborationModelStatus.RUNNING.name
+            },
             warResultJson = result.encodeJson(),
         )
         val updatedTask = task.withMetadata(meta).copy(updatedAt = Clock.System.now().toEpochMilliseconds())
@@ -2570,6 +2689,28 @@ class RemoteDataRepository(
                 resultConv.withMetadata(resultMeta).copy(updatedAt = Clock.System.now().toEpochMilliseconds()),
             )
         }
+        ensureStoredHierarchy()
+    }
+
+    override fun appendConversationExchange(conversationId: String, userContent: String, assistantContent: String) {
+        val conversation = savedConversations.value.find { it.id == conversationId } ?: return
+        val now = Clock.System.now().toEpochMilliseconds()
+        val userMsg = Conversation.Message(
+            id = Uuid.random().toString(),
+            role = "user",
+            content = userContent,
+        )
+        val assistantMsg = Conversation.Message(
+            id = Uuid.random().toString(),
+            role = "assistant",
+            content = assistantContent,
+        )
+        conversationStorage.saveConversation(
+            conversation.copy(
+                messages = conversation.messages + userMsg + assistantMsg,
+                updatedAt = now,
+            ),
+        )
         ensureStoredHierarchy()
     }
 
@@ -2623,6 +2764,7 @@ class RemoteDataRepository(
             updatedAt = now,
         )
         conversationStorage.saveConversation(conversation)
+        ensureStoredHierarchy()
     }
 
     override fun getChatMode(): ChatMode = appSettings.getChatMode()

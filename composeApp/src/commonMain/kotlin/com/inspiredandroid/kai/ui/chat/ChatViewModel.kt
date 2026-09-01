@@ -10,7 +10,6 @@ import com.inspiredandroid.kai.data.ConversationFolderManager
 import com.inspiredandroid.kai.data.DataRepository
 import com.inspiredandroid.kai.data.FreeMode
 import com.inspiredandroid.kai.data.Service
-import com.inspiredandroid.kai.data.ServiceEntry
 import com.inspiredandroid.kai.data.TaskScheduler
 import com.inspiredandroid.kai.data.UiSubmission
 import com.inspiredandroid.kai.data.collaboration.CollaborationEvent
@@ -125,8 +124,8 @@ class ChatViewModel(
         optimizePrompt = ::optimizePrompt,
         clearPendingPromptText = ::clearPendingPromptText,
         resendUserMessage = ::resendUserMessage,
+        openWarModelMessage = ::openWarModelMessage,
     )
-    private val freeModeNames: Map<FreeMode, String> = FreeMode.entries.associateWith { "Free ${it.modelId.replaceFirstChar { c -> c.uppercase() }}" }
     /** Loaded asynchronously — [getString] is suspend and must not run inside [combine]. */
     private val untitledConversationTitle = MutableStateFlow("")
     private var currentJob: Job? = null
@@ -151,13 +150,12 @@ class ChatViewModel(
             }.getOrDefault("")
         }
 
-        // Keep restoreCurrentConversation off the main thread; see issue #197 (large persisted
+        // Keep conversation load off the main thread; see issue #197 (large persisted
         // tool outputs caused ANRs when JSON-decoded synchronously during VM construction).
-        // ChatScreen gates the interactive-mode branch on !isRestoring to avoid a flash.
+        // Startup shows the empty CUI screen — do not restore the last chat into the main pane.
         viewModelScope.launch(backgroundDispatcher) {
             dataRepository.loadConversations()
-            dataRepository.restoreCurrentConversation()
-            presetInteractiveModeForCurrentConversation()
+            dataRepository.startNewChat()
             _state.update { it.copy(isRestoring = false) }
         }
 
@@ -495,6 +493,11 @@ class ChatViewModel(
             updateAvailableServices()
             return
         }
+        if (instanceId == "free") {
+            dataRepository.setFreeServicePrimary(true)
+            updateAvailableServices()
+            return
+        }
 
         dataRepository.setFreeServicePrimary(false)
         val instances = dataRepository.getConfiguredServiceInstances()
@@ -511,6 +514,17 @@ class ChatViewModel(
      * 总类 (service) exposes all of its 分支 (models) for direct selection.
      */
     private fun selectModel(instanceId: String, modelId: String) {
+        val freeModeFromId = FREE_MODE_INSTANCE_IDS[instanceId]
+        if (instanceId == "free" || freeModeFromId != null) {
+            val mode = freeModeFromId
+                ?: FreeMode.entries.find { it.modelId == modelId }
+                ?: return
+            dataRepository.setFreeMode(mode)
+            dataRepository.setFreeServicePrimary(true)
+            updateAvailableServices()
+            return
+        }
+
         val instances = dataRepository.getConfiguredServiceInstances()
         val instance = instances.firstOrNull { it.instanceId == instanceId } ?: return
         val service = Service.fromId(instance.serviceId)
@@ -547,6 +561,15 @@ class ChatViewModel(
         val runner = CollaborationTaskRunner(
             repository = dataRepository,
             listener = object : CollaborationListener {
+                override fun onTaskStarted(taskId: String) {
+                    _state.update { s ->
+                        s.copy(
+                            historyTreeParentId = taskId,
+                            showHistoryTree = true,
+                        )
+                    }
+                }
+
                 override fun onEvent(event: CollaborationEvent) {
                     _state.update { s -> s.copy(collaborationEvents = s.collaborationEvents + event) }
                 }
@@ -564,6 +587,8 @@ class ChatViewModel(
                         s.copy(
                             isCollaborating = false,
                             collaborationSummary = summary,
+                            historyTreeParentId = taskId.ifBlank { s.historyTreeParentId },
+                            showHistoryTree = true,
                         )
                     }
                 }
@@ -600,11 +625,32 @@ class ChatViewModel(
             it.copy(
                 collaborationModelViewId = conversationId,
                 showHistoryTree = false,
+                collaborationHighlightMessageId = null,
+            )
+        }
+    }
+
+    private fun openWarModelMessage(conversationId: String, messageId: String) {
+        _state.update {
+            it.copy(
+                collaborationModelViewId = conversationId,
+                collaborationHighlightMessageId = messageId.ifBlank { null },
+                showHistoryTree = false,
             )
         }
     }
 
     private fun closeCollaborationModelView() {
+        val warTaskId = _state.value.warResultViewTaskId
+        if (warTaskId != null) {
+            _state.update {
+                it.copy(
+                    collaborationModelViewId = null,
+                    collaborationHighlightMessageId = null,
+                )
+            }
+            return
+        }
         val modelId = _state.value.collaborationModelViewId
         val taskParentId = dataRepository.savedConversations.value
             .find { it.id == modelId }
@@ -612,6 +658,7 @@ class ChatViewModel(
         _state.update {
             it.copy(
                 collaborationModelViewId = null,
+                collaborationHighlightMessageId = null,
                 historyTreeParentId = taskParentId ?: it.historyTreeParentId,
                 showHistoryTree = taskParentId != null,
             )
@@ -804,7 +851,13 @@ class ChatViewModel(
             repository = dataRepository,
             listener = object : WarListener {
                 override fun onTaskStarted(taskId: String) {
-                    _state.update { s -> s.copy(warResultViewTaskId = taskId) }
+                    _state.update { s ->
+                        s.copy(
+                            warResultViewTaskId = taskId,
+                            historyTreeParentId = taskId,
+                            showHistoryTree = true,
+                        )
+                    }
                 }
 
                 override fun onEvent(event: WarEvent) {
@@ -825,6 +878,8 @@ class ChatViewModel(
                             isWarRunning = false,
                             warSummary = summary,
                             warResultViewTaskId = taskId.ifBlank { s.warResultViewTaskId },
+                            historyTreeParentId = taskId.ifBlank { s.historyTreeParentId },
+                            showHistoryTree = true,
                         )
                     }
                 }
@@ -881,7 +936,7 @@ class ChatViewModel(
         }
     }
 
-    fun buildEligibleModelOptions(minScore: Double = 0.0): List<Pair<ModelRef, String>> {
+    fun buildEligibleModelOptions(minScore: Double = com.inspiredandroid.kai.data.collaboration.CollaborationSupport.DEFAULT_MIN_SCORE_THRESHOLD): List<Pair<ModelRef, String>> {
         val eligible = CollaborationSupport.resolveEligibleModels(dataRepository, minScore)
         val services = runCatching { dataRepository.getServiceEntries() }.getOrDefault(emptyList())
         val labelResolver = CollaborationSupport.buildLabelResolver(services)
@@ -898,26 +953,7 @@ class ChatViewModel(
     // endregion
 
     private fun updateAvailableServices() {
-        val configuredEntries = dataRepository.getServiceEntries()
-        val currentFreeMode = dataRepository.getFreeMode()
-        val freeIsPrimary = dataRepository.isFreeServicePrimary() || configuredEntries.isEmpty()
-
-        val freeModes = (listOf(currentFreeMode) + FreeMode.entries.filter { it != currentFreeMode }).map { mode ->
-            ServiceEntry(
-                instanceId = mode.instanceId,
-                serviceId = Service.Free.id,
-                serviceName = freeModeNames.getValue(mode),
-                modelId = "",
-                icon = mode.icon,
-            )
-        }
-
-        val entries = if (freeIsPrimary) {
-            freeModes + configuredEntries
-        } else {
-            configuredEntries + freeModes
-        }.toImmutableList()
-
+        val entries = dataRepository.getServiceEntries().toImmutableList()
         val primaryService = entries.firstOrNull()?.let { Service.fromId(it.serviceId) }
         val warning = if (primaryService?.isOnDevice == true && dataRepository.getLocalDownloadedModels().isEmpty()) {
             Res.string.litert_no_model_warning
@@ -1031,6 +1067,7 @@ class ChatViewModel(
                 collaborationNotification = null,
                 showCollaborationWizard = false,
                 collaborationModelViewId = null,
+                collaborationHighlightMessageId = null,
                 showWarWizard = false,
                 isWarRunning = false,
                 warEvents = emptyList(),

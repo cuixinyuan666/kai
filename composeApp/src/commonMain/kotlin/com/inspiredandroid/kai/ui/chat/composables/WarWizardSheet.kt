@@ -32,12 +32,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.collaboration.CollaborationConfig
 import com.inspiredandroid.kai.data.ServiceEntry
 import com.inspiredandroid.kai.data.collaboration.ModelRef
 import com.inspiredandroid.kai.data.war.WarWizardParams
 import com.inspiredandroid.kai.speech.SpeechToText
 import com.inspiredandroid.kai.ui.KaiOutlinedTextField
+import com.inspiredandroid.kai.ui.components.ModelPairChipsFromLabel
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
@@ -59,6 +61,8 @@ internal fun WarWizardSheet(
     onDismiss: () -> Unit,
     onStart: (WarWizardParams) -> Unit,
     speechToText: SpeechToText? = null,
+    sttLanguage: String = "zh",
+    onCycleSttLanguage: () -> Unit = {},
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -69,9 +73,10 @@ internal fun WarWizardSheet(
         val wizardFiles = remember { mutableStateListOf<PlatformFile>() }
         var isSpeechListening by remember { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
-        var minScoreText by remember { mutableStateOf("0") }
+        var minScoreText by remember { mutableStateOf("50") }
         var maxWait by remember { mutableIntStateOf(defaultConfig.maxWaitSeconds) }
         var retryCount by remember { mutableIntStateOf(defaultConfig.retryCount) }
+        var voteRounds by remember { mutableIntStateOf(2) }
         var notifyFailure by remember { mutableStateOf(defaultConfig.notifyOnFailure) }
         var notifyComplete by remember { mutableStateOf(defaultConfig.notifyOnComplete) }
         var summaryExpanded by remember { mutableStateOf(false) }
@@ -84,7 +89,7 @@ internal fun WarWizardSheet(
                     val modelIds = entry.modelOptions.map { it.id }.ifEmpty { listOfNotNull(entry.modelId) }
                     for (modelId in modelIds.distinct()) {
                         val score = modelBenchmarks["${entry.serviceId}::$modelId"] ?: 0.0
-                        if (score > minScore) {
+                        if (score >= minScore) {
                             val ref = ModelRef(entry.instanceId, modelId)
                             val label = entry.modelOptions.find { it.id == modelId }?.label ?: modelId
                             add(ref to "${entry.serviceName} / $label")
@@ -113,7 +118,7 @@ internal fun WarWizardSheet(
             when (step) {
                 0 -> {
                     Text(
-                        "请输入任务。第 1 轮所有达标模型并行作答，总结模型提取分歧，第 2 轮各模型对分歧投票。",
+                        "请输入任务。第 1 轮各模型分别作答，总结模型提取相同点与分歧方案；随后按轮询次数把分歧方案交叉下发给未提出该方案的模型投票（第 3 轮起附带上一轮理由）。",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -129,6 +134,10 @@ internal fun WarWizardSheet(
                         isOptimizingPrompt = isOptimizingPrompt,
                         speechSupported = speechSupported,
                         isSpeechListening = isSpeechListening,
+                        sttLanguage = sttLanguage,
+                        onCycleSttLanguage = onCycleSttLanguage,
+                        showSendButton = false,
+                        chatMode = ChatMode.COLLABORATION,
                         onToggleSpeechInput = {
                             val stt = speechToText
                             if (stt != null) {
@@ -142,7 +151,10 @@ internal fun WarWizardSheet(
                                         }
                                     } else {
                                         isSpeechListening = true
-                                        val lang = if (questionInputText.text.any { it.code > 127 }) "zh" else "en"
+                                        val lang = com.inspiredandroid.kai.speech.SpeechLanguage.resolve(
+                                            questionInputText.text,
+                                            sttLanguage,
+                                        )
                                         stt.startListening(lang).onFailure {
                                             isSpeechListening = false
                                         }
@@ -153,19 +165,20 @@ internal fun WarWizardSheet(
                     )
                 }
                 1 -> {
-                    Text("选择参与战争的模型：仅模型测试分数严格大于该值的模型会收到指令。", style = MaterialTheme.typography.bodyMedium)
+                    Text("选择参与战争的模型：仅模型测试分数 ≥ 该值的模型会收到指令（默认 50）。", style = MaterialTheme.typography.bodyMedium)
                     KaiOutlinedTextField(
                         value = minScoreText,
                         onValueChange = { minScoreText = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("分数门槛（>）") },
+                        label = { Text("分数门槛（≥）") },
                         singleLine = true,
                     )
                 }
                 2 -> {
                     Text("设置运行参数", style = MaterialTheme.typography.titleMedium)
-                    WarNumberField("单次调用最大等待时间（秒，默认 60）", maxWait) { maxWait = it }
+                    WarNumberField("单次调用最大等待时间（秒，默认 60；超时指期间内没有任何输出）", maxWait) { maxWait = it }
                     WarNumberField("模型失败重试次数", retryCount) { retryCount = it }
+                    WarNumberField("轮询次数（默认 2）", voteRounds) { voteRounds = it }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("模型失败显式提醒", modifier = Modifier.weight(1f))
                         Switch(checked = notifyFailure, onCheckedChange = { notifyFailure = it })
@@ -175,7 +188,7 @@ internal fun WarWizardSheet(
                         Switch(checked = notifyComplete, onCheckedChange = { notifyComplete = it })
                     }
                     Text("总结模型（分析相同点与分歧）", style = MaterialTheme.typography.bodyMedium)
-                    val autoLabel = "自动（参与模型中最高分）"
+                    val autoLabel = "自动（按分数从高到低，失败则换下一模型）"
                     val selectedLabel = summarySelection?.let { ref ->
                         resolvedEligible.find { it.first == ref }?.second
                             ?: ref.modelId
@@ -205,9 +218,21 @@ internal fun WarWizardSheet(
                                 },
                             )
                             resolvedEligible.forEach { (ref, label) ->
-                                val score = modelBenchmarks[ref.key]?.toInt()?.toString() ?: "?"
+                                val serviceId = availableServices.find { it.instanceId == ref.instanceId }?.serviceId
+                                val score = (
+                                    serviceId?.let { modelBenchmarks["$it::${ref.modelId}"] }
+                                        ?: modelBenchmarks[ref.key]
+                                    )?.toInt()?.toString() ?: "?"
                                 DropdownMenuItem(
-                                    text = { Text("$label ($score)") },
+                                    text = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            ModelPairChipsFromLabel(label, compact = true)
+                                            Text("($score)", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    },
                                     onClick = {
                                         summarySelection = ref
                                         summaryExpanded = false
@@ -250,6 +275,7 @@ internal fun WarWizardSheet(
                                         notifyOnComplete = notifyComplete,
                                         attachedFiles = wizardFiles.toList(),
                                         summaryModelOverride = summarySelection,
+                                        voteRounds = voteRounds.coerceIn(1, 10),
                                     ),
                                 )
                             },

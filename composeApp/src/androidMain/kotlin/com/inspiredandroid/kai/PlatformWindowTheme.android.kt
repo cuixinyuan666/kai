@@ -6,3 +6,7 @@ import androidx.compose.runtime.Composable
 actual fun SyncPlatformWindowTheme() {
     // Android 使用系统 Activity 窗口，无需额外同步。
 }
+
+@Composable
+actual fun PlatformTitleBar() {
+}

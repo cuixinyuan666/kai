@@ -108,6 +108,7 @@ data class ConversationMetadata(
     val warResultJson: String? = null,
     val summaryModelInstanceId: String? = null,
     val summaryModelId: String? = null,
+    val isSummaryModel: Boolean = false,
 )
 
 enum class CollaborationModelStatus {

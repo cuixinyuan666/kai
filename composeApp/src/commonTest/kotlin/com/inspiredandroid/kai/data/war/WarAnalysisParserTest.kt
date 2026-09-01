@@ -10,13 +10,14 @@ class WarAnalysisParserTest {
     @Test
     fun `parseAnalysis handles plain JSON`() {
         val raw = """
-            {"commonPoints":["都同意使用 Kotlin"],"aspects":[{"id":"a1","title":"方面1：架构","description":"A 主张微服务，B 主张单体"}]}
+            {"commonPoints":["都同意使用 Kotlin"],"aspects":[{"id":"a1","title":"方面1：架构","description":"A 主张微服务，B 主张单体","proposedBy":["模型A"]}]}
         """.trimIndent()
         val result = WarAnalysisParser.parseAnalysis(raw)
         assertNotNull(result)
         assertEquals(listOf("都同意使用 Kotlin"), result.commonPoints)
         assertEquals(1, result.aspects.size)
         assertEquals("a1", result.aspects[0].id)
+        assertEquals(listOf("模型A"), result.aspects[0].proposedByLabels)
     }
 
     @Test
@@ -93,6 +94,7 @@ class WarAnalysisParserTest {
         )
         val text = WarCopyFormatter.format(result)
         assertTrue(text.contains("任务A"))
-        assertTrue(text.contains("同意 1/2"))
+        assertTrue(text.contains("投票表"))
+        assertTrue(text.contains("1/2"))
     }
 }

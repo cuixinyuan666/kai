@@ -75,11 +75,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.inspiredandroid.kai.BackIcon
 import com.inspiredandroid.kai.TerminalLine
 import com.inspiredandroid.kai.data.Service
+import com.inspiredandroid.kai.data.collaboration.ChatMode
 import com.inspiredandroid.kai.data.metadata
 import com.inspiredandroid.kai.data.supportsAgenticFlows
 import com.inspiredandroid.kai.data.war.decodeWarTaskResult
 import com.inspiredandroid.kai.getBackgroundDispatcher
 import com.inspiredandroid.kai.onDragAndDropEventDropped
+import com.inspiredandroid.kai.speech.SpeechLanguage
 import com.inspiredandroid.kai.ui.build.KaiBuildScreen
 import com.inspiredandroid.kai.ui.chat.composables.BotMessage
 import com.inspiredandroid.kai.ui.chat.composables.ChatHistoryTreeSheet
@@ -103,6 +105,7 @@ import com.inspiredandroid.kai.ui.chat.composables.uiErrorText
 import com.inspiredandroid.kai.ui.components.LogoAnimation
 import com.inspiredandroid.kai.ui.rememberCopyToClipboard
 import com.inspiredandroid.kai.ui.components.VerticalScrollbarForList
+import com.inspiredandroid.kai.ui.components.VerticalScrollbarForScroll
 import com.inspiredandroid.kai.ui.components.animatedGradientBorder
 import com.inspiredandroid.kai.ui.dynamicui.FrozenSubmission
 import com.inspiredandroid.kai.ui.dynamicui.KaiUiRenderer
@@ -442,11 +445,13 @@ private fun InteractiveModeContent(
                 val uiBlocks = blocks.filterIsInstance<KaiUiBlock>()
 
                 if (uiBlocks.isNotEmpty()) {
+                    val interactiveScroll = rememberScrollState()
+                    Box(Modifier.fillMaxSize()) {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp + bottomPadding),
+                            .verticalScroll(interactiveScroll)
+                            .padding(start = 12.dp, end = 24.dp, top = 8.dp, bottom = 8.dp + bottomPadding),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         for (block in uiBlocks) {
@@ -459,6 +464,11 @@ private fun InteractiveModeContent(
                                 wrapInCard = false,
                             )
                         }
+                    }
+                    VerticalScrollbarForScroll(
+                        scrollState = interactiveScroll,
+                        modifier = Modifier.align(CenterEnd).fillMaxHeight(),
+                    )
                     }
                 } else if (uiState.error == null) {
                     // AI responded with no valid kai-ui AND there's no API error underneath —
@@ -510,6 +520,7 @@ private fun ChatModeScreen(
     var showHistorySheet by remember { mutableStateOf(false) }
     val speechToText = remember { com.inspiredandroid.kai.speech.createSpeechToText() }
     var isSpeechListening by remember { mutableStateOf(false) }
+    var sttLanguage by rememberSaveable { mutableStateOf("zh") }
     val componentScope = rememberCoroutineScope()
     var isSandboxOpen by rememberSaveable { mutableStateOf(initialSandboxOpen) }
     // Hoisted here so the draft survives toggling the sandbox/terminal view, which
@@ -979,11 +990,17 @@ private fun ChatModeScreen(
                     onSelectService = uiState.actions.selectService,
                     onSelectModel = uiState.actions.selectModel,
                     modelBenchmarks = uiState.modelBenchmarks,
+                    chatMode = uiState.chatMode,
                     onOpenCollaborationWizard = uiState.actions.openCollaborationWizard,
                     onOptimizePrompt = { uiState.actions.optimizePrompt(questionInputText.text) },
                     isOptimizingPrompt = uiState.isOptimizingPrompt,
                     speechSupported = speechToText?.isSupported == true,
                     isSpeechListening = isSpeechListening,
+                    sttLanguage = sttLanguage,
+                    onCycleSttLanguage = { sttLanguage = SpeechLanguage.cycle(sttLanguage) },
+                    showSendButton = uiState.chatMode == ChatMode.SINGLE &&
+                        !uiState.showCollaborationWizard &&
+                        !uiState.showWarWizard,
                     onToggleSpeechInput = {
                         val stt = speechToText
                         if (stt != null) {
@@ -999,7 +1016,7 @@ private fun ChatModeScreen(
                                     }
                                 } else {
                                     isSpeechListening = true
-                                    val lang = if (questionInputText.text.any { it.code > 127 }) "zh" else "en"
+                                    val lang = SpeechLanguage.resolve(questionInputText.text, sttLanguage)
                                     stt.startListening(lang).onFailure {
                                         isSpeechListening = false
                                         snackbarHostState.showSnackbar("无法启动语音识别")
@@ -1020,6 +1037,31 @@ private fun ChatModeScreen(
         }
 
         val modelViewId = uiState.collaborationModelViewId
+        val warTaskId = uiState.warResultViewTaskId
+        if (warTaskId != null) {
+            val warResult = uiState.folderConversations
+                .find { it.id == warTaskId }
+                ?.metadata()
+                ?.warResultJson
+                ?.let { decodeWarTaskResult(it) }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+            ) {
+                WarResultView(
+                    result = warResult,
+                    warEvents = uiState.warEvents,
+                    isRunning = uiState.isWarRunning,
+                    actions = uiState.actions,
+                    onBack = uiState.actions.closeWarResultView,
+                    onCopy = uiState.actions.copyPlainText,
+                    onOpenModelFolder = {
+                        uiState.actions.openWarTaskModels(warTaskId)
+                    },
+                )
+            }
+        }
         if (modelViewId != null) {
             val modelConversation = uiState.folderConversations.find { it.id == modelViewId }
             if (modelConversation != null) {
@@ -1049,33 +1091,9 @@ private fun ChatModeScreen(
                         serviceIdForModel = uiState.availableServices
                             .find { it.instanceId == modelConversation.metadata().instanceId }
                             ?.serviceId,
+                        highlightMessageId = uiState.collaborationHighlightMessageId,
                     )
                 }
-            }
-        }
-        val warTaskId = uiState.warResultViewTaskId
-        if (warTaskId != null) {
-            val warResult = uiState.folderConversations
-                .find { it.id == warTaskId }
-                ?.metadata()
-                ?.warResultJson
-                ?.let { decodeWarTaskResult(it) }
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
-            ) {
-                WarResultView(
-                    result = warResult,
-                    warEvents = uiState.warEvents,
-                    isRunning = uiState.isWarRunning,
-                    actions = uiState.actions,
-                    onBack = uiState.actions.closeWarResultView,
-                    onCopy = uiState.actions.copyPlainText,
-                    onOpenModelFolder = {
-                        uiState.actions.openWarTaskModels(warTaskId)
-                    },
-                )
             }
         }
     }
@@ -1110,6 +1128,8 @@ private fun ChatModeScreen(
             onDismiss = uiState.actions.dismissCollaborationWizard,
             onStart = uiState.actions.startCollaborationTask,
             speechToText = speechToText,
+            sttLanguage = sttLanguage,
+            onCycleSttLanguage = { sttLanguage = SpeechLanguage.cycle(sttLanguage) },
         )
     }
 
@@ -1127,6 +1147,8 @@ private fun ChatModeScreen(
             onDismiss = uiState.actions.dismissWarWizard,
             onStart = uiState.actions.startWarTask,
             speechToText = speechToText,
+            sttLanguage = sttLanguage,
+            onCycleSttLanguage = { sttLanguage = SpeechLanguage.cycle(sttLanguage) },
         )
     }
 }

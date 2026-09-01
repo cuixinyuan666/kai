@@ -6,17 +6,18 @@ import kotlinx.serialization.Serializable
  * 一键测试所有大模型的结果（0..100 分制）。
  *
  * 打分项（权重见 [WEIGHTS]）：
- * - [completion] 完成度：是否成功返回非空响应（0 或 100）
- * - [speed] 速度：总耗时越短分越高
- * - [responseSpeed] 响应速度：字符产出速率（字符/秒）越高分越高
- * - [wordCount] 字数：回复字数越多分越高（封顶）
+ * - [completion] 完成度：是否成功返回非空响应
+ * - [responseSpeed] 字数/耗时比值：字符产出速率越高分越高
+ * - [stability] 运行稳定性：一次成功高于多次重试
+ * - [quality] 回答质量：长度与结构启发式
+ * - [speed] / [wordCount] 仍写入，供一键测试详情展示
  */
 @Serializable
 data class ModelBenchmark(
     val modelKey: String = "",
     val modelLabel: String = "",
     val serviceId: String = "",
-    /** 用户协作打分（不受自动测试覆盖） */
+    /** 用户协作打分（不受自动测试/任务自动分覆盖） */
     val isUserScore: Boolean = false,
     val note: String? = null,
     /** 0..100 加权总分 */
@@ -25,6 +26,8 @@ data class ModelBenchmark(
     val speed: Double = 0.0,
     val responseSpeed: Double = 0.0,
     val wordCount: Double = 0.0,
+    val stability: Double = 0.0,
+    val quality: Double = 0.0,
     /** 响应耗时毫秒 */
     val elapsedMs: Long = 0L,
     /** 响应字符数 */
@@ -34,10 +37,10 @@ data class ModelBenchmark(
     companion object {
         /** 各打分项权重（总和 1.0） */
         val WEIGHTS: Map<String, Double> = mapOf(
-            "completion" to 0.35,
-            "speed" to 0.20,
-            "responseSpeed" to 0.20,
-            "wordCount" to 0.25,
+            "completion" to 0.25,
+            "responseSpeed" to 0.25,
+            "stability" to 0.20,
+            "quality" to 0.30,
         )
     }
 }
